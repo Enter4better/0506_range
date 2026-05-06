@@ -27,9 +27,8 @@ def list_logs_root():
 
 
 @logs_bp.route('/list', methods=['GET'])
-@jwt_required()
 def list_logs():
-    """获取日志列表"""
+    """获取日志列表（无需登录）"""
     try:
         # 处理分页参数 - 前端传递的是 page 和 size 参数
         page = int(request.args.get('page', 1))
