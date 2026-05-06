@@ -31,22 +31,44 @@ def list_logs_root():
 def list_logs():
     """获取日志列表"""
     try:
-        # 不传 user_id，获取所有日志（或者传 None）
-        limit = int(request.args.get('limit', 100))
-        offset = int(request.args.get('offset', 0))
+        # 处理分页参数 - 前端传递的是 page 和 size 参数
+        page = int(request.args.get('page', 1))
+        size = int(request.args.get('size', 100))
         level = request.args.get('level')
         source = request.args.get('source')
         
-        # 不传 user_id，获取所有日志
-        log_objects = Log.list_all(limit=limit, offset=offset, level=level, source=source)
+        # 将 page 和 size 转换为 limit 和 offset
+        offset = (page - 1) * size
         
+        # 构建查询条件
+        conditions = []
+        params = []
+        if level:
+            conditions.append("level = ?")
+            params.append(level)
+        if source and source != 'all':
+            conditions.append("source = ?")
+            params.append(source)
+        
+        # 查询总数
+        count_sql = "SELECT COUNT(*) FROM logs WHERE 1=1"
+        if conditions:
+            count_sql += " AND " + " AND ".join(conditions)
+        connection = db_service.get_connection()
+        cursor = connection.cursor()
+        cursor.execute(count_sql, params)
+        total = cursor.fetchone()[0]
+        connection.close()
+        
+        # 不传 user_id，获取所有日志
+        log_objects = Log.list_all(limit=size, offset=offset, level=level, source=source)
         logs = [log.to_dict() for log in log_objects]
         
         return jsonify({
             'status': 'success',
             'data': logs,
             'logs': logs,
-            'total': len(logs)
+            'total': total
         }), 200
     except Exception as e:
         current_app.logger.error(f"获取日志列表失败: {e}")

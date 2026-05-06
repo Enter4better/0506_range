@@ -37,10 +37,10 @@ DOCKER_CONFIG = {
     'port_range_end': 8999
 }
 
-# AI配置
+# AI配置（DeepSeek）
 AI_CONFIG = {
-    'api_key': os.getenv('ZHIPUAI_API_KEY', ''),
-    'model': os.getenv('AI_MODEL', 'glm-4-flash'),
+    'api_key': os.getenv('DEEPSEEK_API_KEY', ''),
+    'model': os.getenv('AI_MODEL', 'deepseek-chat'),
     'max_tokens': int(os.getenv('AI_MAX_TOKENS', 1024)),
     'temperature': float(os.getenv('AI_TEMPERATURE', 0.7))
 }
@@ -65,7 +65,7 @@ WATCHDOG_CONFIG = {
 
 # 安全配置
 SECURITY_CONFIG = {
-    'secret_key': os.getenv('SECRET_KEY', 'your-secret-key-here'),
+    'secret_key': os.getenv('SECRET_KEY', 'bb1dbf7f91a3c5cb43da2e2092e4627db420dbac185108213682a194df9d581'),
     'token_expire': int(os.getenv('TOKEN_EXPIRE', 3600)),
     'password_hash': os.getenv('PASSWORD_HASH', 'pbkdf2:sha256:260000')
 }

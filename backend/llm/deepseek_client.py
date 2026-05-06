@@ -14,11 +14,11 @@ class DeepSeekClient:
     def __init__(self, api_key: str = None):
         self.api_key = api_key or os.environ.get('DEEPSEEK_API_KEY', '')
         self.base_url = "https://api.deepseek.com/v1"
-        self.model = "deepseek-chat"
+        self.model = os.environ.get('AI_MODEL', 'deepseek-chat')
         self.enabled = bool(self.api_key)
         
         if self.enabled:
-            logger.info("DeepSeek 客户端初始化成功")
+            logger.info(f"DeepSeek 客户端初始化成功，模型: {self.model}")
         else:
             logger.warning("DeepSeek API Key 未配置，将使用模拟模式")
     

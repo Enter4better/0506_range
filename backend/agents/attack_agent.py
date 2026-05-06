@@ -20,7 +20,7 @@ logger = logging.getLogger('agents.attack')
 class AttackAgent(BaseAgent):
     """攻击模拟Agent - 分阶段攻击，自动升级"""
     
-    # 攻击阶段定义
+   
     ATTACK_PHASES = {
         1: {'name': '信息收集', 'description': '探测目标信息', 'color': '#909399'},
         2: {'name': '漏洞探测', 'description': '发现可利用漏洞', 'color': '#409eff'},
@@ -87,7 +87,7 @@ class AttackAgent(BaseAgent):
             phase_attacks = self.PHASE_ATTACKS.get(current_phase, self.PHASE_ATTACKS[1])
             attack_type = random.choice(phase_attacks)
         
-        # 使用 AI 生成攻击结果分析
+        # 使用 AI 生成攻击结果分析（攻击Agent使用高temperature增加创造性）
         ai_analysis = self._ai_analyze_attack(attack_type, success, intensity, current_phase)
         
         result = {
@@ -110,12 +110,26 @@ class AttackAgent(BaseAgent):
         return result
     
     def _ai_analyze_attack(self, attack_type: str, success: bool, intensity: int, phase: int) -> str:
-        """使用 AI 分析攻击结果"""
-        if not success:
-            return f"{attack_type}攻击未成功，目标防御机制生效"
-        
+        """使用 AI 分析攻击结果 - 攻击Agent使用高temperature(0.8)增加策略多样性"""
         phase_name = self.ATTACK_PHASES[phase]['name']
-        return f"{attack_type}攻击成功，已进入{phase_name}阶段，发现安全短板"
+        
+        prompt = f"""你是一个红队攻击专家。刚刚执行了一次攻击，请分析结果：
+
+攻击类型：{attack_type}
+攻击阶段：{phase_name}（第{phase}阶段）
+攻击强度：{intensity}/10
+攻击结果：{'成功' if success else '失败'}
+
+请用2-3句话简要分析这次攻击的技术细节、成功/失败原因，以及下一步建议。"""
+
+        try:
+            analysis = self.ai_chat(prompt, temperature=0.8)
+            return analysis.strip()
+        except Exception as e:
+            logger.warning(f"AI分析失败，使用默认分析: {e}")
+            if not success:
+                return f"{attack_type}攻击未成功，目标防御机制生效"
+            return f"{attack_type}攻击成功，已进入{phase_name}阶段，发现安全短板"
     
     def get_session_status(self, session_id: str) -> Dict:
         """获取会话攻击状态"""
