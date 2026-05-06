@@ -9,7 +9,7 @@
       <div class="bg-orb bg-orb-2"></div>
       <div class="bg-orb bg-orb-3"></div>
     </div>
-    
+
     <!-- 登录卡片 -->
     <div class="login-wrapper">
       <div class="login-card glass-card">
@@ -29,57 +29,40 @@
 
         <!-- 切换登录/注册 -->
         <div class="auth-tabs">
-          <div 
-            class="auth-tab" 
-            :class="{ active: isLogin }" 
-            @click="isLogin = true"
-          >
-            <el-icon><User /></el-icon>
+          <div class="auth-tab" :class="{ active: isLogin }" @click="isLogin = true">
+            <el-icon>
+              <User />
+            </el-icon>
             登录
           </div>
-          <div 
-            class="auth-tab" 
-            :class="{ active: !isLogin }" 
-            @click="isLogin = false"
-          >
-            <el-icon><UserFilled /></el-icon>
+          <div class="auth-tab" :class="{ active: !isLogin }" @click="isLogin = false">
+            <el-icon>
+              <UserFilled />
+            </el-icon>
             注册
           </div>
           <div class="tab-indicator" :class="{ login: isLogin }"></div>
         </div>
 
         <!-- 登录表单 -->
-        <el-form 
-          v-if="isLogin"
-          :model="loginForm" 
-          :rules="loginRules" 
-          ref="loginFormRef" 
-          class="auth-form"
-        >
+        <el-form v-if="isLogin" :model="loginForm" :rules="loginRules" ref="loginFormRef" class="auth-form">
           <el-form-item prop="username">
-            <el-input 
-              v-model="loginForm.username" 
-              placeholder="请输入用户名" 
-              size="large"
-              clearable
-            >
+            <el-input v-model="loginForm.username" placeholder="请输入用户名" size="large" clearable>
               <template #prefix>
-                <el-icon><User /></el-icon>
+                <el-icon>
+                  <User />
+                </el-icon>
               </template>
             </el-input>
           </el-form-item>
-          
+
           <el-form-item prop="password">
-            <el-input 
-              v-model="loginForm.password" 
-              type="password" 
-              placeholder="请输入密码" 
-              size="large"
-              show-password
-              @keyup.enter="handleLogin"
-            >
+            <el-input v-model="loginForm.password" type="password" placeholder="请输入密码" size="large" show-password
+              @keyup.enter="handleLogin">
               <template #prefix>
-                <el-icon><Lock /></el-icon>
+                <el-icon>
+                  <Lock />
+                </el-icon>
               </template>
             </el-input>
           </el-form-item>
@@ -93,89 +76,61 @@
             </el-link>
           </div>
 
-          <el-button 
-            type="primary" 
-            size="large" 
-            class="submit-btn"
-            :loading="loading"
-            @click="handleLogin"
-          >
-            <el-icon v-if="!loading"><Unlock /></el-icon>
+          <el-button type="primary" size="large" class="submit-btn" :loading="loading" @click="handleLogin">
+            <el-icon v-if="!loading">
+              <Unlock />
+            </el-icon>
             <span>{{ loading ? '验证中...' : '安全登录' }}</span>
           </el-button>
         </el-form>
 
         <!-- 注册表单 -->
-        <el-form 
-          v-else
-          :model="registerForm" 
-          :rules="registerRules" 
-          ref="registerFormRef" 
-          class="auth-form"
-        >
+        <el-form v-else :model="registerForm" :rules="registerRules" ref="registerFormRef" class="auth-form">
           <el-form-item prop="username">
-            <el-input 
-              v-model="registerForm.username" 
-              placeholder="请输入用户名" 
-              size="large"
-              clearable
-            >
+            <el-input v-model="registerForm.username" placeholder="请输入用户名" size="large" clearable>
               <template #prefix>
-                <el-icon><User /></el-icon>
+                <el-icon>
+                  <User />
+                </el-icon>
               </template>
             </el-input>
           </el-form-item>
-          
+
           <el-form-item prop="email">
-            <el-input 
-              v-model="registerForm.email" 
-              placeholder="请输入邮箱" 
-              size="large"
-              clearable
-            >
+            <el-input v-model="registerForm.email" placeholder="请输入邮箱" size="large" clearable>
               <template #prefix>
-                <el-icon><Message /></el-icon>
+                <el-icon>
+                  <Message />
+                </el-icon>
               </template>
             </el-input>
           </el-form-item>
 
           <el-form-item prop="password">
-            <el-input 
-              v-model="registerForm.password" 
-              type="password" 
-              placeholder="请输入密码" 
-              size="large"
-              show-password
-            >
+            <el-input v-model="registerForm.password" type="password" placeholder="请输入密码" size="large" show-password>
               <template #prefix>
-                <el-icon><Lock /></el-icon>
+                <el-icon>
+                  <Lock />
+                </el-icon>
               </template>
             </el-input>
           </el-form-item>
 
           <el-form-item prop="confirmPassword">
-            <el-input 
-              v-model="registerForm.confirmPassword" 
-              type="password" 
-              placeholder="请确认密码" 
-              size="large"
-              show-password
-              @keyup.enter="handleRegister"
-            >
+            <el-input v-model="registerForm.confirmPassword" type="password" placeholder="请确认密码" size="large"
+              show-password @keyup.enter="handleRegister">
               <template #prefix>
-                <el-icon><Lock /></el-icon>
+                <el-icon>
+                  <Lock />
+                </el-icon>
               </template>
             </el-input>
           </el-form-item>
 
-          <el-button 
-            type="primary" 
-            size="large" 
-            class="submit-btn"
-            :loading="loading"
-            @click="handleRegister"
-          >
-            <el-icon v-if="!loading"><Key /></el-icon>
+          <el-button type="primary" size="large" class="submit-btn" :loading="loading" @click="handleRegister">
+            <el-icon v-if="!loading">
+              <Key />
+            </el-icon>
             <span>{{ loading ? '创建中...' : '创建账户' }}</span>
           </el-button>
         </el-form>
@@ -183,16 +138,22 @@
         <!-- 演示账号 -->
         <div class="demo-section">
           <div class="demo-header">
-            <el-icon><Monitor /></el-icon>
+            <el-icon>
+              <Monitor />
+            </el-icon>
             <span>快速体验</span>
           </div>
           <div class="demo-buttons">
             <div class="demo-btn" @click="fillDemo('admin', 'admin123')">
-              <el-icon><UserFilled /></el-icon>
+              <el-icon>
+                <UserFilled />
+              </el-icon>
               <span>管理员</span>
             </div>
             <div class="demo-btn" @click="fillDemo('user', 'user123')">
-              <el-icon><User /></el-icon>
+              <el-icon>
+                <User />
+              </el-icon>
               <span>普通用户</span>
             </div>
           </div>
@@ -205,7 +166,9 @@
             <span class="status-text">后端 {{ backendOnline ? '在线' : '离线' }}</span>
           </div>
           <div class="status-item">
-            <el-icon class="status-icon"><Timer /></el-icon>
+            <el-icon class="status-icon">
+              <Timer />
+            </el-icon>
             <span class="status-text">{{ currentTime }}</span>
           </div>
         </div>
@@ -259,15 +222,15 @@ const registerRules = {
   ],
   confirmPassword: [
     { required: true, message: '请确认密码', trigger: 'blur' },
-    { 
+    {
       validator: (rule, value, callback) => {
         if (value !== registerForm.value.password) {
           callback(new Error('两次密码不一致'))
         } else {
           callback()
         }
-      }, 
-      trigger: 'blur' 
+      },
+      trigger: 'blur'
     }
   ]
 }
@@ -304,27 +267,37 @@ async function handleLogin() {
     ElMessage.warning('请正确填写登录信息')
     return
   }
-  
+
   loading.value = true
   try {
     const res = await axios.post('/api/auth/login', {
       username: loginForm.value.username,
       password: loginForm.value.password
     })
-    
-    if (res.data?.status === 'success' || res.status === 'success') {
-      const user = res.data?.user || res.user || { 
-        username: loginForm.value.username, 
-        role: loginForm.value.username === 'admin' ? '管理员' : '用户' 
+
+    if (res.data?.status === 'success') {
+      // 保存 token
+      if (res.data.token) {
+        localStorage.setItem('token', res.data.token)
+        console.log('Token已保存:', res.data.token.substring(0, 20) + '...')
+      }
+
+      const user = res.data?.user || {
+        username: loginForm.value.username,
+        role: loginForm.value.username === 'admin' ? '管理员' : '用户'
       }
       localStorage.setItem('cyber_user', JSON.stringify(user))
       if (rememberMe.value) localStorage.setItem('cyber_remember', 'true')
+
       ElMessage.success('登录成功，欢迎 ' + user.username)
       router.push('/')
     } else {
-      ElMessage.error(res.data?.msg || res.msg || '登录失败')
+      ElMessage.error(res.data?.msg || '登录失败')
     }
-  } catch {
+  } catch (error) {
+    console.error('登录错误:', error)
+    // 演示模式 - 保存模拟 token
+    localStorage.setItem('token', 'demo_token_' + Date.now())
     const demoUser = { username: loginForm.value.username, role: loginForm.value.username === 'admin' ? '管理员' : '用户' }
     localStorage.setItem('cyber_user', JSON.stringify(demoUser))
     ElMessage.success('演示模式登录成功')
@@ -342,7 +315,7 @@ async function handleRegister() {
     ElMessage.warning('请正确填写注册信息')
     return
   }
-  
+
   loading.value = true
   try {
     const res = await axios.post('/api/auth/register', {
@@ -350,7 +323,7 @@ async function handleRegister() {
       email: registerForm.value.email,
       password: registerForm.value.password
     })
-    
+
     if (res.data?.status === 'success' || res.status === 'success') {
       ElMessage.success('注册成功，请登录')
       isLogin.value = true
@@ -373,10 +346,10 @@ function initBgAnimation() {
   const ctx = canvas.getContext('2d')
   canvas.width = window.innerWidth
   canvas.height = window.innerHeight
-  
+
   const particles = []
   const connections = []
-  
+
   // 创建粒子
   for (let i = 0; i < 80; i++) {
     particles.push({
@@ -389,24 +362,24 @@ function initBgAnimation() {
       pulse: Math.random() * Math.PI * 2
     })
   }
-  
+
   function animate() {
     ctx.clearRect(0, 0, canvas.width, canvas.height)
-    
+
     // 更新粒子
     particles.forEach(p => {
       p.x += p.vx
       p.y += p.vy
       p.pulse += 0.02
-      
+
       if (p.x < 0 || p.x > canvas.width) p.vx *= -1
       if (p.y < 0 || p.y > canvas.height) p.vy *= -1
-      
+
       const pulseSize = p.size + Math.sin(p.pulse) * 0.5
       const alpha = 0.3 + Math.sin(p.pulse) * 0.2
-      
+
       const color = p.hue === 270 ? `rgba(139,44,230,${alpha})` : `rgba(0,229,255,${alpha})`
-      
+
       ctx.beginPath()
       ctx.arc(p.x, p.y, pulseSize, 0, Math.PI * 2)
       ctx.fillStyle = color
@@ -414,7 +387,7 @@ function initBgAnimation() {
       ctx.shadowColor = color
       ctx.fill()
     })
-    
+
     // 绘制连线
     ctx.shadowBlur = 0
     for (let i = 0; i < particles.length; i++) {
@@ -422,7 +395,7 @@ function initBgAnimation() {
         const dx = particles[i].x - particles[j].x
         const dy = particles[i].y - particles[j].y
         const dist = Math.sqrt(dx * dx + dy * dy)
-        
+
         if (dist < 120) {
           const alpha = (1 - dist / 120) * 0.15
           ctx.beginPath()
@@ -434,7 +407,7 @@ function initBgAnimation() {
         }
       }
     }
-    
+
     requestAnimationFrame(animate)
   }
   animate()
@@ -445,7 +418,7 @@ onMounted(() => {
   updateTime()
   timeInterval = setInterval(updateTime, 1000)
   checkBackend()
-  
+
   if (localStorage.getItem('cyber_remember')) {
     const stored = localStorage.getItem('cyber_user')
     if (stored) {
@@ -453,10 +426,10 @@ onMounted(() => {
         const user = JSON.parse(stored)
         loginForm.value.username = user.username || ''
         rememberMe.value = true
-      } catch {}
+      } catch { }
     }
   }
-  
+
   initBgAnimation()
 })
 
@@ -501,20 +474,23 @@ onUnmounted(() => {
 }
 
 @keyframes gridMove {
-  0% { transform: translate(0, 0); }
-  100% { transform: translate(60px, 60px); }
+  0% {
+    transform: translate(0, 0);
+  }
+
+  100% {
+    transform: translate(60px, 60px);
+  }
 }
 
 .bg-lines {
   position: absolute;
   inset: 0;
-  background: repeating-linear-gradient(
-    90deg,
-    transparent,
-    transparent 100px,
-    rgba(0, 229, 255, 0.02) 100px,
-    rgba(0, 229, 255, 0.02) 101px
-  );
+  background: repeating-linear-gradient(90deg,
+      transparent,
+      transparent 100px,
+      rgba(0, 229, 255, 0.02) 100px,
+      rgba(0, 229, 255, 0.02) 101px);
 }
 
 .bg-orb {
@@ -553,8 +529,15 @@ onUnmounted(() => {
 }
 
 @keyframes orbFloat {
-  0%, 100% { transform: translate(0, 0) scale(1); }
-  50% { transform: translate(30px, -30px) scale(1.1); }
+
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+
+  50% {
+    transform: translate(30px, -30px) scale(1.1);
+  }
 }
 
 /* 登录卡片容器 */
@@ -571,7 +554,7 @@ onUnmounted(() => {
   background: rgba(10, 12, 20, 0.8) !important;
   backdrop-filter: blur(20px) saturate(1.2);
   border: 1px solid rgba(139, 44, 230, 0.25);
-  box-shadow: 
+  box-shadow:
     0 0 40px rgba(139, 44, 230, 0.1),
     0 20px 60px rgba(0, 0, 0, 0.5),
     inset 0 1px 0 rgba(255, 255, 255, 0.05);
@@ -597,9 +580,17 @@ onUnmounted(() => {
 }
 
 @keyframes borderGlow {
-  0% { opacity: 0.5; }
-  50% { opacity: 1; }
-  100% { opacity: 0.5; }
+  0% {
+    opacity: 0.5;
+  }
+
+  50% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0.5;
+  }
 }
 
 /* Logo区域 */
@@ -640,8 +631,17 @@ onUnmounted(() => {
 }
 
 @keyframes ringPulse {
-  0%, 100% { transform: scale(1); opacity: 0.5; }
-  50% { transform: scale(1.05); opacity: 1; }
+
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.5;
+  }
+
+  50% {
+    transform: scale(1.05);
+    opacity: 1;
+  }
 }
 
 .logo-text {
@@ -836,8 +836,15 @@ onUnmounted(() => {
 }
 
 @keyframes statusPulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.6; }
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.6;
+  }
 }
 
 .status-icon {
@@ -866,12 +873,12 @@ onUnmounted(() => {
     max-width: 360px;
     padding: 24px;
   }
-  
+
   .logo-container {
     flex-direction: column;
     gap: 12px;
   }
-  
+
   .logo-text {
     text-align: center;
   }

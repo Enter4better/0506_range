@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 Agent API路由 - 集成环境管理、攻击模拟、防御模拟三个AI Agent
 """
@@ -10,10 +11,11 @@ from datetime import datetime
 from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 
-backend_dir = Path(__file__).parent.parent.parent
+backend_dir = Path(__file__).parent.parent
 if str(backend_dir) not in sys.path:
     sys.path.insert(0, str(backend_dir))
 
+from agents import get_orchestrator
 from agents.env_agent import get_env_agent
 from agents.attack_agent import get_attack_agent
 from agents.defense_agent import get_defense_agent
@@ -22,641 +24,262 @@ from models.log import Log
 agents_bp = Blueprint('agents', __name__, url_prefix='/api/agents')
 
 
-# ==================== 环境管理Agent API ====================
+# ==================== 原有 Agent API ====================
 
 @agents_bp.route('/env/scenarios', methods=['GET'])
 @jwt_required()
 def list_env_scenarios():
-    """获取可用的靶场场景模�?""
     try:
         user_id = get_jwt_identity()
         agent = get_env_agent(user_id)
-        
         scenarios = agent.list_available_scenarios()
-        
-        return jsonify({
-            'status': 'success',
-            'scenarios': scenarios,
-            'count': len(scenarios)
-        }), 200
+        return jsonify({'status': 'success', 'scenarios': scenarios}), 200
     except Exception as e:
-        current_app.logger.error(f"获取场景模板失败: {e}")
         return jsonify({'status': 'error', 'msg': str(e)}), 500
 
 
 @agents_bp.route('/env/analyze', methods=['POST'])
 @jwt_required()
 def analyze_env_scenario():
-    """分析场景描述，生成环境配置方�?""
     try:
         user_id = get_jwt_identity()
         data = request.get_json()
-        
         scenario_desc = data.get('scenario_desc', '')
         if not scenario_desc:
-            return jsonify({'status': 'error', 'msg': '请提供场景描�?}), 400
-        
+            return jsonify({'status': 'error', 'msg': '请提供场景描述'}), 400
         agent = get_env_agent(user_id)
         config = agent.analyze_scenario(scenario_desc)
-        
-        Log.create('info', 'env_agent', f'AI分析场景: {scenario_desc[:50]}...', user_id=user_id)
-        
-        return jsonify({
-            'status': 'success',
-            'config': config,
-            'message': '场景分析完成'
-        }), 200
+        return jsonify({'status': 'success', 'config': config}), 200
     except Exception as e:
-        current_app.logger.error(f"场景分析失败: {e}")
         return jsonify({'status': 'error', 'msg': str(e)}), 500
 
 
 @agents_bp.route('/env/create', methods=['POST'])
 @jwt_required()
 def create_env_environment():
-    """创建靶场环境"""
     try:
         user_id = get_jwt_identity()
         data = request.get_json()
-        
-        # 可以直接提供配置，或提供场景描述让AI生成
         if 'scenario_desc' in data and 'config' not in data:
             agent = get_env_agent(user_id)
             config = agent.analyze_scenario(data['scenario_desc'])
         else:
             config = data.get('config', {})
-        
         if not config:
             return jsonify({'status': 'error', 'msg': '请提供环境配置或场景描述'}), 400
-        
         agent = get_env_agent(user_id)
         result = agent.create_environment(config, user_id)
-        
-        return jsonify({
-            'status': 'success',
-            'result': result,
-            'message': '靶场环境创建任务已提�?
-        }), 200
+        return jsonify({'status': 'success', 'result': result}), 200
     except Exception as e:
-        current_app.logger.error(f"创建靶场环境失败: {e}")
         return jsonify({'status': 'error', 'msg': str(e)}), 500
 
 
-@agents_bp.route('/env/status/<env_id>', methods=['GET'])
-@jwt_required()
-def get_env_status(env_id):
-    """获取靶场环境状�?""
-    try:
-        user_id = get_jwt_identity()
-        agent = get_env_agent(user_id)
-        
-        status = agent.get_environment_status(env_id)
-        
-        return jsonify({
-            'status': 'success',
-            'env_id': env_id,
-            'environment_status': status
-        }), 200
-    except Exception as e:
-        current_app.logger.error(f"获取环境状态失�? {e}")
-        return jsonify({'status': 'error', 'msg': str(e)}), 500
-
-
-@agents_bp.route('/env/destroy/<env_id>', methods=['POST'])
-@jwt_required()
-def destroy_env_environment(env_id):
-    """销毁靶场环�?""
-    try:
-        user_id = get_jwt_identity()
-        agent = get_env_agent(user_id)
-        
-        result = agent.destroy_environment(env_id)
-        
-        return jsonify({
-            'status': 'success',
-            'result': result,
-            'message': '靶场环境销毁任务已提交'
-        }), 200
-    except Exception as e:
-        current_app.logger.error(f"销毁靶场环境失�? {e}")
-        return jsonify({'status': 'error', 'msg': str(e)}), 500
-
-
-# ==================== 模拟攻击Agent API ====================
-
-@agents_bp.route('/attack/types', methods=['GET'])
-@jwt_required()
-def list_attack_types():
-    """获取支持的攻击类�?""
-    try:
-        user_id = get_jwt_identity()
-        agent = get_attack_agent(user_id)
-        
-        types = agent.get_attack_types()
-        
-        return jsonify({
-            'status': 'success',
-            'types': types,
-            'count': len(types)
-        }), 200
-    except Exception as e:
-        current_app.logger.error(f"获取攻击类型失败: {e}")
-        return jsonify({'status': 'error', 'msg': str(e)}), 500
-
-
-@agents_bp.route('/attack/phases', methods=['GET'])
-@jwt_required()
-def list_attack_phases():
-    """获取攻击阶段定义"""
-    try:
-        user_id = get_jwt_identity()
-        agent = get_attack_agent(user_id)
-        
-        phases = agent.get_attack_phases()
-        
-        return jsonify({
-            'status': 'success',
-            'phases': phases
-        }), 200
-    except Exception as e:
-        current_app.logger.error(f"获取攻击阶段失败: {e}")
-        return jsonify({'status': 'error', 'msg': str(e)}), 500
-
+# ==================== 攻击规划 API ====================
 
 @agents_bp.route('/attack/plan', methods=['POST'])
-@jwt_required()
 def plan_attack():
-    """规划攻击策略"""
+    """AI攻击规划"""
     try:
-        user_id = get_jwt_identity()
         data = request.get_json()
-        
         target = data.get('target', '')
         attack_type = data.get('attack_type', '')
         objective = data.get('objective', None)
         
-        if not target or not attack_type:
-            return jsonify({'status': 'error', 'msg': '请提供目标和攻击类型'}), 400
+        if not target:
+            return jsonify({'status': 'error', 'msg': '请提供目标'}), 400
         
-        agent = get_attack_agent(user_id)
-        plan = agent.plan_attack(target, attack_type, objective)
+        agent = get_attack_agent()
         
-        Log.create('info', 'attack_agent', f'AI规划攻击: {attack_type} -> {target}', user_id=user_id)
-        
-        return jsonify({
-            'status': 'success',
-            'plan': plan,
-            'message': '攻击策略规划完成'
-        }), 200
-    except Exception as e:
-        current_app.logger.error(f"攻击规划失败: {e}")
-        return jsonify({'status': 'error', 'msg': str(e)}), 500
-
-
-@agents_bp.route('/attack/execute', methods=['POST'])
-@jwt_required()
-def execute_attack():
-    """执行攻击"""
-    try:
-        user_id = get_jwt_identity()
-        data = request.get_json()
-        
-        # 可以直接提供计划，或让AI生成计划
-        if 'plan' in data:
-            plan = data['plan']
+        session_id = data.get('session_id')
+        if session_id:
+            session_status = agent.get_session_status(session_id)
+            current_phase = session_status.get('current_phase', 1)
+            phase_name = agent.ATTACK_PHASES[current_phase]['name']
+            
+            plan = {
+                'target': target,
+                'attack_type': attack_type or '自动选择',
+                'current_phase': current_phase,
+                'phase_name': phase_name,
+                'recommended_attacks': agent.get_phase_attacks(current_phase),
+                'estimated_success_rate': 0.6,
+                'message': f'当前处于{phase_name}阶段，推荐使用针对性攻击'
+            }
         else:
-            target = data.get('target', '')
-            attack_type = data.get('attack_type', '')
-            objective = data.get('objective', None)
-            
-            if not target or not attack_type:
-                return jsonify({'status': 'error', 'msg': '请提供目标和攻击类型或攻击计�?}), 400
-            
-            agent = get_attack_agent(user_id)
-            plan = agent.plan_attack(target, attack_type, objective)
+            plan = {
+                'target': target,
+                'attack_type': attack_type or '端口扫描',
+                'steps': ['信息收集', '漏洞扫描', '漏洞利用'],
+                'tools': ['nmap', 'sqlmap'],
+                'estimated_success_rate': 0.6
+            }
         
+        return jsonify({'status': 'success', 'plan': plan}), 200
+    except Exception as e:
+        return jsonify({'status': 'error', 'msg': str(e)}), 500
+
+
+# ==================== 攻击阶段 API ====================
+
+@agents_bp.route('/attack/phases', methods=['GET'])
+def get_attack_phases():
+    """获取攻击阶段定义"""
+    try:
+        agent = get_attack_agent()
+        phases = agent.get_attack_phases()
+        return jsonify({'status': 'success', 'phases': phases}), 200
+    except Exception as e:
+        return jsonify({'status': 'error', 'msg': str(e)}), 500
+
+
+@agents_bp.route('/session/<session_id>/attack/execute', methods=['POST'])
+def execute_session_attack(session_id):
+    """执行攻击（带阶段管理）"""
+    try:
+        data = request.get_json()
+        attack_type = data.get('attack_type')
         intensity = data.get('intensity', 5)
         
-        agent = get_attack_agent(user_id)
-        result = agent.execute_attack(plan, intensity)
+        agent = get_attack_agent()
+        result = agent.execute_attack(session_id, attack_type, intensity)
         
-        return jsonify({
-            'status': 'success',
-            'result': result,
-            'message': '攻击执行完成'
-        }), 200
+        return jsonify({'status': 'success', 'result': result}), 200
     except Exception as e:
-        current_app.logger.error(f"攻击执行失败: {e}")
         return jsonify({'status': 'error', 'msg': str(e)}), 500
 
 
-@agents_bp.route('/attack/report', methods=['POST'])
-@jwt_required()
-def generate_attack_report():
-    """生成攻击报告"""
+@agents_bp.route('/session/<session_id>/attack/status', methods=['GET'])
+def get_session_attack_status(session_id):
+    """获取会话攻击状态"""
     try:
-        user_id = get_jwt_identity()
+        agent = get_attack_agent()
+        status = agent.get_session_status(session_id)
+        return jsonify({'status': 'success', 'data': status}), 200
+    except Exception as e:
+        return jsonify({'status': 'error', 'msg': str(e)}), 500
+
+
+# ==================== 防御 API ====================
+
+@agents_bp.route('/defense/status', methods=['GET'])
+def get_defense_status():
+    """获取防御状态"""
+    try:
+        session_id = request.args.get('session_id')
+        agent = get_defense_agent()
+        status = agent.get_status(session_id)
+        return jsonify({'status': 'success', 'data': status}), 200
+    except Exception as e:
+        return jsonify({'status': 'error', 'msg': str(e)}), 500
+
+
+@agents_bp.route('/defense/logs', methods=['GET'])
+def get_defense_logs():
+    """获取防御日志"""
+    try:
+        agent = get_defense_agent()
+        limit = int(request.args.get('limit', 30))
+        logs = agent.get_defense_logs(limit)
+        return jsonify({'status': 'success', 'logs': logs}), 200
+    except Exception as e:
+        return jsonify({'status': 'error', 'msg': str(e)}), 500
+
+
+# ==================== 编排器 API ====================
+
+@agents_bp.route('/scenario', methods=['POST'])
+def create_scenario():
+    """创建演练场景"""
+    try:
         data = request.get_json()
-        
-        attack_result = data.get('result', {})
-        if not attack_result:
-            return jsonify({'status': 'error', 'msg': '请提供攻击结�?}), 400
-        
-        agent = get_attack_agent(user_id)
-        report = agent.generate_attack_report(attack_result)
-        
-        return jsonify({
-            'status': 'success',
-            'report': report,
-            'message': '攻击报告生成完成'
-        }), 200
+        description = data.get('description', '')
+        if not description:
+            return jsonify({'status': 'error', 'message': '请提供场景描述'}), 400
+        orchestrator = get_orchestrator()
+        result = orchestrator.create_scenario(description)
+        return jsonify(result)
     except Exception as e:
-        current_app.logger.error(f"生成攻击报告失败: {e}")
-        return jsonify({'status': 'error', 'msg': str(e)}), 500
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
-# ==================== 模拟防御Agent API ====================
-
-@agents_bp.route('/defense/types', methods=['GET'])
-@jwt_required()
-def list_defense_types():
-    """获取支持的防御类�?""
+@agents_bp.route('/<session_id>/status', methods=['GET'])
+def get_session_status(session_id):
+    """获取会话状态"""
     try:
-        user_id = get_jwt_identity()
-        agent = get_defense_agent(user_id)
-        
-        types = agent.get_defense_types()
-        
-        return jsonify({
-            'status': 'success',
-            'types': types,
-            'count': len(types)
-        }), 200
+        orchestrator = get_orchestrator()
+        result = orchestrator.get_status(session_id)
+        return jsonify(result)
     except Exception as e:
-        current_app.logger.error(f"获取防御类型失败: {e}")
-        return jsonify({'status': 'error', 'msg': str(e)}), 500
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
-@agents_bp.route('/defense/actions', methods=['GET'])
-@jwt_required()
-def list_response_actions():
-    """获取响应动作列表"""
+@agents_bp.route('/<session_id>/attack', methods=['POST'])
+def execute_session_attack_legacy(session_id):
+    """执行攻击（兼容旧接口）"""
     try:
-        user_id = get_jwt_identity()
-        agent = get_defense_agent(user_id)
-        
-        actions = agent.get_response_actions()
-        
-        return jsonify({
-            'status': 'success',
-            'actions': actions,
-            'count': len(actions)
-        }), 200
-    except Exception as e:
-        current_app.logger.error(f"获取响应动作失败: {e}")
-        return jsonify({'status': 'error', 'msg': str(e)}), 500
-
-
-@agents_bp.route('/defense/analyze', methods=['POST'])
-@jwt_required()
-def analyze_defense_threat():
-    """分析威胁并生成防御策�?""
-    try:
-        user_id = get_jwt_identity()
         data = request.get_json()
-        
-        attack_data = data.get('attack_data', {})
-        if not attack_data:
-            return jsonify({'status': 'error', 'msg': '请提供攻击数�?}), 400
-        
-        agent = get_defense_agent(user_id)
-        analysis = agent.analyze_threat(attack_data)
-        
-        Log.create('info', 'defense_agent', 
-                  f'AI分析威胁: {attack_data.get("attack_type", "unknown")}', 
-                  user_id=user_id)
-        
-        return jsonify({
-            'status': 'success',
-            'analysis': analysis,
-            'message': '威胁分析完成'
-        }), 200
-    except Exception as e:
-        current_app.logger.error(f"威胁分析失败: {e}")
-        return jsonify({'status': 'error', 'msg': str(e)}), 500
-
-
-@agents_bp.route('/defense/deploy', methods=['POST'])
-@jwt_required()
-def deploy_defense():
-    """部署防御措施"""
-    try:
-        user_id = get_jwt_identity()
-        data = request.get_json()
-        
-        defense_type = data.get('defense_type', '')
-        config = data.get('config', None)
-        
-        if not defense_type:
-            return jsonify({'status': 'error', 'msg': '请提供防御类�?}), 400
-        
-        agent = get_defense_agent(user_id)
-        result = agent.deploy_defense(defense_type, config)
-        
-        return jsonify({
-            'status': 'success',
-            'result': result,
-            'message': '防御措施部署完成'
-        }), 200
-    except Exception as e:
-        current_app.logger.error(f"防御部署失败: {e}")
-        return jsonify({'status': 'error', 'msg': str(e)}), 500
-
-
-@agents_bp.route('/defense/detect', methods=['POST'])
-@jwt_required()
-def detect_attack():
-    """检测攻�?""
-    try:
-        user_id = get_jwt_identity()
-        data = request.get_json()
-        
-        attack_data = data.get('attack_data', {})
-        if not attack_data:
-            return jsonify({'status': 'error', 'msg': '请提供攻击数�?}), 400
-        
-        agent = get_defense_agent(user_id)
-        result = agent.detect_attack(attack_data)
-        
-        return jsonify({
-            'status': 'success',
-            'detection': result,
-            'message': '攻击检测完�?
-        }), 200
-    except Exception as e:
-        current_app.logger.error(f"攻击检测失�? {e}")
-        return jsonify({'status': 'error', 'msg': str(e)}), 500
-
-
-@agents_bp.route('/defense/respond', methods=['POST'])
-@jwt_required()
-def respond_to_attack():
-    """响应攻击"""
-    try:
-        user_id = get_jwt_identity()
-        data = request.get_json()
-        
-        attack_data = data.get('attack_data', {})
-        detection_result = data.get('detection_result', {})
-        
-        if not attack_data:
-            return jsonify({'status': 'error', 'msg': '请提供攻击数�?}), 400
-        
-        agent = get_defense_agent(user_id)
-        
-        # 如果没有检测结果，先检�?
-        if not detection_result:
-            detection_result = agent.detect_attack(attack_data)
-        
-        result = agent.respond_to_attack(attack_data, detection_result)
-        
-        return jsonify({
-            'status': 'success',
-            'response': result,
-            'message': '攻击响应完成'
-        }), 200
-    except Exception as e:
-        current_app.logger.error(f"攻击响应失败: {e}")
-        return jsonify({'status': 'error', 'msg': str(e)}), 500
-
-
-@agents_bp.route('/defense/check', methods=['POST'])
-@jwt_required()
-def check_attack_defense():
-    """检查攻击是否被防御"""
-    try:
-        user_id = get_jwt_identity()
-        data = request.get_json()
-        
-        attack_data = data.get('attack_data', {})
-        defense_config = data.get('defense_config', {})
-        
-        if not attack_data or not defense_config:
-            return jsonify({'status': 'error', 'msg': '请提供攻击数据和防御配置'}), 400
-        
-        agent = get_defense_agent(user_id)
-        result = agent.check_attack_defense(attack_data, defense_config)
-        
-        return jsonify({
-            'status': 'success',
-            'check_result': result,
-            'message': '防御检查完�?
-        }), 200
-    except Exception as e:
-        current_app.logger.error(f"防御检查失�? {e}")
-        return jsonify({'status': 'error', 'msg': str(e)}), 500
-
-
-@agents_bp.route('/defense/alerts', methods=['GET'])
-@jwt_required()
-def get_defense_alerts():
-    """获取防御告警列表"""
-    try:
-        user_id = get_jwt_identity()
-        agent = get_defense_agent(user_id)
-        
-        alerts = agent.get_alerts()
-        
-        return jsonify({
-            'status': 'success',
-            'alerts': alerts,
-            'count': len(alerts)
-        }), 200
-    except Exception as e:
-        current_app.logger.error(f"获取告警失败: {e}")
-        return jsonify({'status': 'error', 'msg': str(e)}), 500
-
-
-@agents_bp.route('/defense/alerts/clear', methods=['POST'])
-@jwt_required()
-def clear_defense_alerts():
-    """清空防御告警"""
-    try:
-        user_id = get_jwt_identity()
-        agent = get_defense_agent(user_id)
-        
-        agent.clear_alerts()
-        
-        return jsonify({
-            'status': 'success',
-            'message': '告警已清�?
-        }), 200
-    except Exception as e:
-        current_app.logger.error(f"清空告警失败: {e}")
-        return jsonify({'status': 'error', 'msg': str(e)}), 500
-
-
-@agents_bp.route('/defense/blocked-ips', methods=['GET'])
-@jwt_required()
-def get_blocked_ips():
-    """获取已封禁的IP列表"""
-    try:
-        user_id = get_jwt_identity()
-        agent = get_defense_agent(user_id)
-        
-        ips = agent.get_blocked_ips()
-        
-        return jsonify({
-            'status': 'success',
-            'blocked_ips': ips,
-            'count': len(ips)
-        }), 200
-    except Exception as e:
-        current_app.logger.error(f"获取封禁IP失败: {e}")
-        return jsonify({'status': 'error', 'msg': str(e)}), 500
-
-
-@agents_bp.route('/defense/report', methods=['POST'])
-@jwt_required()
-def generate_defense_report():
-    """生成防御报告"""
-    try:
-        user_id = get_jwt_identity()
-        data = request.get_json()
-        
-        defense_results = data.get('results', [])
-        
-        agent = get_defense_agent(user_id)
-        report = agent.generate_defense_report(defense_results)
-        
-        return jsonify({
-            'status': 'success',
-            'report': report,
-            'message': '防御报告生成完成'
-        }), 200
-    except Exception as e:
-        current_app.logger.error(f"生成防御报告失败: {e}")
-        return jsonify({'status': 'error', 'msg': str(e)}), 500
-
-
-# ==================== 综合Agent API ====================
-
-@agents_bp.route('/full-simulation', methods=['POST'])
-@jwt_required()
-def run_full_simulation():
-    """运行完整的攻防模拟流�?""
-    try:
-        user_id = get_jwt_identity()
-        data = request.get_json()
-        
-        # 1. 创建靶场环境
-        scenario_desc = data.get('scenario', 'Web安全靶场')
-        env_agent = get_env_agent(user_id)
-        env_config = env_agent.analyze_scenario(scenario_desc)
-        env_result = env_agent.create_environment(env_config, user_id)
-        
-        # 2. 规划并执行攻�?
-        target = data.get('target', 'localhost')
-        attack_type = data.get('attack_type', 'SQL注入')
+        attack_type = data.get('attack_type')
         intensity = data.get('intensity', 5)
-        
-        attack_agent = get_attack_agent(user_id)
-        attack_plan = attack_agent.plan_attack(target, attack_type)
-        attack_result = attack_agent.execute_attack(attack_plan, intensity)
-        
-        # 3. 防御检测和响应
-        defense_agent = get_defense_agent(user_id)
-        
-        # 部署防御措施
-        defense_analysis = defense_agent.analyze_threat({
-            'attack_type': attack_type,
-            'target': target,
-            'intensity': intensity
-        })
-        
-        deployed_defenses = []
-        for rec in defense_analysis.get('recommended_defenses', [])[:2]:
-            deploy_result = defense_agent.deploy_defense(rec['type'])
-            deployed_defenses.append(deploy_result)
-        
-        # 检测攻�?
-        detection_result = defense_agent.detect_attack({
-            'attack_type': attack_type,
-            'target': target,
-            'intensity': intensity,
-            'source_ip': '192.168.1.100'
-        })
-        
-        # 响应攻击
-        response_result = defense_agent.respond_to_attack({
-            'attack_type': attack_type,
-            'target': target,
-            'intensity': intensity,
-            'source_ip': '192.168.1.100'
-        }, detection_result)
-        
-        # 生成综合报告
-        attack_report = attack_agent.generate_attack_report(attack_result)
-        defense_report = defense_agent.generate_defense_report([
-            {'blocked': detection_result.get('detected', False)}
-        ])
-        
-        Log.create('success', 'agents', 
-                  f'完整攻防模拟完成: {attack_type} -> {target}', 
-                  user_id=user_id)
-        
-        return jsonify({
-            'status': 'success',
-            'simulation': {
-                'environment': env_result,
-                'attack': attack_result,
-                'defense': {
-                    'analysis': defense_analysis,
-                    'deployed': deployed_defenses,
-                    'detection': detection_result,
-                    'response': response_result
-                },
-                'reports': {
-                    'attack': attack_report,
-                    'defense': defense_report
-                }
-            },
-            'message': '完整攻防模拟完成'
-        }), 200
+        orchestrator = get_orchestrator()
+        result = orchestrator.execute_attack(session_id, attack_type, intensity)
+        return jsonify(result)
     except Exception as e:
-        current_app.logger.error(f"完整模拟失败: {e}")
-        return jsonify({'status': 'error', 'msg': str(e)}), 500
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@agents_bp.route('/<session_id>', methods=['DELETE'])
+def destroy_session(session_id):
+    """销毁会话"""
+    try:
+        orchestrator = get_orchestrator()
+        result = orchestrator.cleanup(session_id)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@agents_bp.route('/sessions', methods=['GET'])
+def list_sessions():
+    """获取所有会话"""
+    try:
+        orchestrator = get_orchestrator()
+        sessions = []
+        for sid, sess in orchestrator.sessions.items():
+            sessions.append({
+                'session_id': sid,
+                'environment': sess.get('environment', {}),
+                'status': sess.get('status', 'active'),
+                'created_at': sess.get('created_at')
+            })
+        return jsonify({'status': 'success', 'sessions': sessions})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@agents_bp.route('/tasks/<task_id>', methods=['GET'])
+def get_task_result(task_id):
+    """获取异步任务结果"""
+    try:
+        from services.async_queue import async_queue_service
+        result = async_queue_service.get_result(task_id)
+        if result is None:
+            return jsonify({'status': 'pending'})
+        return jsonify({'status': 'completed', 'result': result})
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
 @agents_bp.route('/status', methods=['GET'])
-@jwt_required()
 def get_agents_status():
-    """获取所有Agent状�?""
+    """获取所有Agent状态"""
     try:
-        user_id = get_jwt_identity()
-        
         return jsonify({
             'status': 'success',
             'agents': {
-                'env_agent': {
-                    'name': '环境管理Agent',
-                    'description': '负责靶场底层的资源编�?,
-                    'llm_enabled': bool(os.environ.get('ZHIPU_API_KEY'))
-                },
-                'attack_agent': {
-                    'name': '模拟攻击Agent',
-                    'description': '利用环境中的漏洞达成特定目标',
-                    'llm_enabled': bool(os.environ.get('ZHIPU_API_KEY'))
-                },
-                'defense_agent': {
-                    'name': '模拟防御Agent',
-                    'description': '检测和阻止攻击',
-                    'llm_enabled': bool(os.environ.get('ZHIPU_API_KEY'))
-                }
+                'env_agent': {'name': '环境管理Agent', 'llm_enabled': bool(os.environ.get('DEEPSEEK_API_KEY'))},
+                'attack_agent': {'name': '模拟攻击Agent', 'llm_enabled': bool(os.environ.get('DEEPSEEK_API_KEY'))},
+                'defense_agent': {'name': '模拟防御Agent', 'llm_enabled': bool(os.environ.get('DEEPSEEK_API_KEY'))}
             }
         }), 200
     except Exception as e:
-        current_app.logger.error(f"获取Agent状态失�? {e}")
         return jsonify({'status': 'error', 'msg': str(e)}), 500
-
-

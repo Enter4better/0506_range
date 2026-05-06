@@ -7,6 +7,9 @@ from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 import sys
 from pathlib import Path
+import docker
+import json
+from datetime import datetime
 
 # 添加backend目录到路径
 backend_dir = Path(__file__).parent.parent
@@ -25,47 +28,147 @@ compat_bp = Blueprint('compat', __name__, url_prefix='/api')
 # ==================== 环境管理兼容路由 /api/env/... ====================
 
 @compat_bp.route('/env/list', methods=['GET'])
-# @jwt_required()  # 已移除令牌认证要求
 def compat_env_list():
     """获取环境列表（兼容前端）"""
     try:
-        user_id = 1  # 默认用户ID，无需令牌认证
         targets = Target.list_all()
+        
+        # 获取Docker容器信息
+        docker_info = {}
+        try:
+            docker_client = docker.from_env()
+            for container in docker_client.containers.list(all=True):
+                if container.name.startswith('target_'):
+                    ports = ''
+                    if container.ports:
+                        port_list = []
+                        for k, v in container.ports.items():
+                            if v:
+                                port_list.append(f"{v[0]['HostPort']}:{k}")
+                        ports = ', '.join(port_list)
+                    
+                    docker_info[container.name] = {
+                        'id': container.short_id,
+                        'image': container.image.tags[0] if container.image.tags else container.image.short_id,
+                        'status': container.status,
+                        'ports': ports
+                    }
+        except Exception as e:
+            current_app.logger.error(f"获取Docker信息失败: {e}")
+        
+        containers = []
+        for target in targets:
+            container_info = target.to_dict()
+            if target.name in docker_info:
+                container_info.update(docker_info[target.name])
+            containers.append(container_info)
         
         return jsonify({
             'status': 'success',
-            'containers': [t.to_dict() for t in targets]
+            'containers': containers
         }), 200
     except Exception as e:
         current_app.logger.error(f"获取环境列表失败: {e}")
         return jsonify({'status': 'error', 'msg': '获取环境列表失败'}), 500
 
 
+def _create_container_direct(data):
+    """直接创建Docker容器"""
+    try:
+        image = data.get('image', 'nginx')
+        port = data.get('port', '8080:80')
+        name = data.get('name', f'target_{image}_{datetime.now().strftime("%H%M%S")}')
+        
+        # 解析端口
+        container_port = 80
+        host_port = 8080
+        
+        if ':' in port:
+            port_parts = port.split(':')
+            try:
+                host_port = int(port_parts[0])
+                container_port = int(port_parts[1])
+            except ValueError:
+                pass
+        else:
+            try:
+                host_port = int(port)
+            except ValueError:
+                pass
+        
+        # 检查端口是否可用
+        import socket
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        port_available = sock.connect_ex(('127.0.0.1', host_port)) != 0
+        sock.close()
+        
+        if not port_available:
+            for new_port in range(host_port + 1, host_port + 100):
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                if sock.connect_ex(('127.0.0.1', new_port)) != 0:
+                    host_port = new_port
+                    sock.close()
+                    break
+                sock.close()
+        
+        docker_client = docker.from_env()
+        port_bindings = {f'{container_port}/tcp': ('127.0.0.1', host_port)}
+        
+        container = docker_client.containers.run(
+            image,
+            name=name,
+            detach=True,
+            ports=port_bindings,
+            remove=False
+        )
+        
+        # 保存到数据库
+        target = Target(
+            name=name,
+            type='docker',
+            port=f'{host_port}:{container_port}',
+            os=image,
+            status='running',
+            config=json.dumps({
+                'image': image,
+                'host_port': host_port,
+                'container_port': container_port,
+                'container_id': container.id
+            })
+        )
+        target.save()
+        
+        Log.create('success', 'target', f'靶场创建成功: {name}', user_id=1)
+        
+        return jsonify({
+            'status': 'success',
+            'container_id': container.short_id,
+            'name': name,
+            'port': host_port,
+            'image': image,
+            'container_port': container_port
+        }), 201
+        
+    except Exception as e:
+        current_app.logger.error(f"创建容器失败: {e}")
+        return jsonify({'status': 'error', 'msg': str(e)}), 500
+
+
 @compat_bp.route('/env/create', methods=['POST'])
-# @jwt_required()  # 已移除令牌认证要求
 def compat_env_create():
     """创建环境（兼容前端）"""
     try:
-        user_id = 1  # 默认用户ID，无需令牌认证
-        data = request.get_json()
-        
-        # 兼容新旧接口，调用真实靶场创建逻辑
-        image = data.get('image', 'nginx')
-        port = data.get('port', '8080:80')
-        
-        # 转发到真实的靶场创建逻辑
-        from routes.targets import create_target
-        return create_target()
+        data = request.get_json() or {}
+        return _create_container_direct(data)
     except Exception as e:
         current_app.logger.error(f"创建环境失败: {e}")
-        return jsonify({'status': 'error', 'msg': '创建环境失败'}), 500
+        return jsonify({'status': 'error', 'msg': f'创建环境失败: {str(e)}'}), 500
 
 
 @compat_bp.route('/env/<target_id>', methods=['GET'])
 def compat_env_get(target_id):
     """获取环境详情（兼容前端）"""
     try:
-        user_id = 1
         target = Target.get_by_id(target_id)
         
         if not target:
@@ -84,7 +187,6 @@ def compat_env_get(target_id):
 def compat_env_update(target_id):
     """更新环境（兼容前端）"""
     try:
-        user_id = 1
         data = request.get_json()
         target = Target.get_by_id(target_id)
         
@@ -103,7 +205,7 @@ def compat_env_update(target_id):
             return jsonify({'status': 'error', 'msg': '更新环境失败'}), 500
         
         # 记录日志
-        Log.create('info', 'target', f'更新环境: {target.name}', user_id=user_id)
+        Log.create('info', 'target', f'更新环境: {target.name}', user_id=1)
         
         return jsonify({
             'status': 'success',
@@ -118,11 +220,23 @@ def compat_env_update(target_id):
 def compat_env_delete(target_id):
     """删除环境（兼容前端）"""
     try:
-        user_id = 1
         target = Target.get_by_id(target_id)
         
         if not target:
             return jsonify({'status': 'error', 'msg': '环境不存在'}), 404
+        
+        # 尝试删除Docker容器
+        try:
+            docker_client = docker.from_env()
+            if target.name:
+                container = docker_client.containers.get(target.name)
+                try:
+                    container.stop(timeout=5)
+                except Exception:
+                    pass
+                container.remove(force=True)
+        except Exception as e:
+            current_app.logger.warning(f"删除容器失败: {e}")
         
         success = target.delete()
         
@@ -130,7 +244,7 @@ def compat_env_delete(target_id):
             return jsonify({'status': 'error', 'msg': '删除环境失败'}), 500
         
         # 记录日志
-        Log.create('info', 'target', f'删除环境: {target.name}', user_id=user_id)
+        Log.create('info', 'target', f'删除环境: {target.name}', user_id=1)
         
         return jsonify({
             'status': 'success',
@@ -145,11 +259,19 @@ def compat_env_delete(target_id):
 def compat_env_start(target_id):
     """启动环境（兼容前端）"""
     try:
-        user_id = 1
         target = Target.get_by_id(target_id)
         
         if not target:
             return jsonify({'status': 'error', 'msg': '环境不存在'}), 404
+        
+        # 尝试启动Docker容器
+        try:
+            docker_client = docker.from_env()
+            if target.name:
+                container = docker_client.containers.get(target.name)
+                container.start()
+        except Exception as e:
+            current_app.logger.warning(f"启动容器失败: {e}")
         
         success = target.update(status='running')
         
@@ -157,7 +279,7 @@ def compat_env_start(target_id):
             return jsonify({'status': 'error', 'msg': '启动环境失败'}), 500
         
         # 记录日志
-        Log.create('success', 'target', f'启动环境: {target.name}', user_id=user_id)
+        Log.create('success', 'target', f'启动环境: {target.name}', user_id=1)
         
         return jsonify({
             'status': 'success',
@@ -172,11 +294,19 @@ def compat_env_start(target_id):
 def compat_env_stop(target_id):
     """停止环境（兼容前端）"""
     try:
-        user_id = 1
         target = Target.get_by_id(target_id)
         
         if not target:
             return jsonify({'status': 'error', 'msg': '环境不存在'}), 404
+        
+        # 尝试停止Docker容器
+        try:
+            docker_client = docker.from_env()
+            if target.name:
+                container = docker_client.containers.get(target.name)
+                container.stop(timeout=10)
+        except Exception as e:
+            current_app.logger.warning(f"停止容器失败: {e}")
         
         success = target.update(status='stopped')
         
@@ -184,7 +314,7 @@ def compat_env_stop(target_id):
             return jsonify({'status': 'error', 'msg': '停止环境失败'}), 500
         
         # 记录日志
-        Log.create('info', 'target', f'停止环境: {target.name}', user_id=user_id)
+        Log.create('info', 'target', f'停止环境: {target.name}', user_id=1)
         
         return jsonify({
             'status': 'success',
@@ -199,7 +329,6 @@ def compat_env_stop(target_id):
 def compat_env_stats():
     """获取环境统计（兼容前端）"""
     try:
-        user_id = 1
         targets = Target.list_all()
         
         stats = {
@@ -224,7 +353,6 @@ def compat_env_stats():
 def compat_attack_list():
     """获取攻击列表（兼容前端）"""
     try:
-        user_id = 1
         attacks = Attack.list_all()
         
         return jsonify({
@@ -240,7 +368,6 @@ def compat_attack_list():
 def compat_attack_create():
     """创建攻击（兼容前端）"""
     try:
-        user_id = 1
         data = request.get_json()
         
         attack = Attack.create(
@@ -248,14 +375,14 @@ def compat_attack_create():
             attack_type=data.get('attack_type', 'SQL注入'),
             target_id=data.get('target_id'),
             config=data.get('config', {}),
-            user_id=user_id
+            user_id=1
         )
         
         if not attack:
             return jsonify({'status': 'error', 'msg': '创建攻击失败'}), 500
         
         # 记录日志
-        Log.create('info', 'attack', f'创建攻击: {attack.name}', user_id=user_id)
+        Log.create('info', 'attack', f'创建攻击: {attack.name}', user_id=1)
         
         return jsonify({
             'status': 'success',
@@ -284,7 +411,6 @@ def compat_attack_types():
 def compat_attack_stats():
     """获取攻击统计（兼容前端）"""
     try:
-        user_id = 1
         stats = Attack.get_stats()
         return jsonify({
             'status': 'success',
@@ -301,7 +427,6 @@ def compat_attack_stats():
 def compat_defense_list():
     """获取防御列表（兼容前端）"""
     try:
-        user_id = 1
         defenses = Defense.list_all()
         
         return jsonify({
@@ -331,7 +456,6 @@ def compat_defense_types():
 def compat_defense_stats():
     """获取防御统计（兼容前端）"""
     try:
-        user_id = 1
         stats = Defense.get_stats()
         return jsonify({
             'status': 'success',
@@ -450,10 +574,21 @@ def compat_stats_dashboard():
             if d.enabled:
                 defense_status.append(d.to_dict())
         
+        # 转换日志格式
+        logs_list = []
+        for log in recent_logs:
+            logs_list.append({
+                'id': log.log_id,
+                'level': log.level,
+                'source': log.source,
+                'message': log.message,
+                'time': log.created_at
+            })
+        
         return jsonify({
             'status': 'success',
             'stats': stats_data,
-            'recent_logs': recent_logs,
+            'recent_logs': logs_list,
             'active_attacks': active_attacks,
             'defense_status': defense_status
         }), 200

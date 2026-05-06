@@ -1,36 +1,35 @@
 <template>
   <div class="page-container">
     <div class="page-header">
-      <h2 class="page-title"><el-icon><DataLine /></el-icon> 攻防控制台</h2>
+      <h2 class="page-title"><el-icon>
+          <DataLine />
+        </el-icon> 攻防控制台</h2>
       <p class="page-desc">
         实时监控 | 后端{{ backendStatus ? '在线' : '离线' }} | 最后更新: {{ lastUpdate }}
       </p>
     </div>
 
     <div v-if="!backendStatus" class="backend-warning">
-      <el-icon><Warning /></el-icon>
+      <el-icon>
+        <Warning />
+      </el-icon>
       后端服务未启动，请先运行：
       <code>cd backend && python app.py</code>
     </div>
 
-    <!-- 统计卡片 -->
+    <!-- 统计卡片 - 使用自定义 StatCard 组件 -->
     <el-row :gutter="14" style="margin-bottom: 14px;">
-      <el-col :xs="24" :sm="12" :md="6" v-for="stat in stats" :key="stat.key">
-        <el-card shadow="hover" class="stat-card" :class="stat.class">
-          <el-statistic :title="stat.title" :value="stat.value">
-            <template #prefix>
-              <el-icon :style="{ color: stat.color, fontSize: '18px' }">
-                <component :is="stat.icon" />
-              </el-icon>
-            </template>
-          </el-statistic>
-          <div class="stat-footer">
-            <span :style="{ color: stat.trend > 0 ? '#00e676' : '#ff4466' }">
-              {{ stat.trend > 0 ? '↑' : '↓' }} {{ Math.abs(stat.trend) }}%
-            </span>
-            <span style="color: var(--text-muted); font-size: 11px;">较昨日</span>
-          </div>
-        </el-card>
+      <el-col :xs="24" :sm="12" :md="6">
+        <StatCard :icon="CircleCheck" :value="stats.health" label="靶场健康度" type="success" />
+      </el-col>
+      <el-col :xs="24" :sm="12" :md="6">
+        <StatCard :icon="Warning" :value="stats.danger" label="危险等级" type="danger" />
+      </el-col>
+      <el-col :xs="24" :sm="12" :md="6">
+        <StatCard :icon="Monitor" :value="stats.coverage" label="防御覆盖率" type="cyan" />
+      </el-col>
+      <el-col :xs="24" :sm="12" :md="6">
+        <StatCard :icon="Timer" :value="stats.runtime" label="运行时间" type="info" />
       </el-col>
     </el-row>
 
@@ -40,7 +39,9 @@
         <el-card shadow="hover" class="tech-card" style="margin-bottom: 14px;">
           <template #header>
             <div class="card-title">
-              <el-icon><Aim /></el-icon> 快速攻击
+              <el-icon>
+                <Aim />
+              </el-icon> 快速攻击
               <el-tag type="danger" size="small" style="margin-left: 8px;">LIVE</el-tag>
             </div>
           </template>
@@ -108,10 +109,13 @@
               <el-slider v-model="attackIntensity" :min="1" :max="10" :marks="intensityMarks" />
             </el-form-item>
           </el-form>
-          <el-button type="danger" style="width: 100%;" @click="startAttack" :loading="attackLoading" :disabled="!backendStatus">
-            <el-icon><Aim /></el-icon> 发起攻击
+          <el-button type="danger" style="width: 100%;" @click="startAttack" :loading="attackLoading"
+            :disabled="!backendStatus">
+            <el-icon>
+              <Aim />
+            </el-icon> 发起攻击
           </el-button>
-          
+
           <!-- 最近攻击记录 -->
           <div v-if="recentAttacks.length > 0" style="margin-top: 14px;">
             <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 8px;">最近攻击</div>
@@ -131,7 +135,9 @@
         <el-card shadow="hover" class="tech-card" style="margin-bottom: 14px;">
           <template #header>
             <div class="card-title">
-              <el-icon><Umbrella /></el-icon> 快速防御
+              <el-icon>
+                <Umbrella />
+              </el-icon> 快速防御
               <el-tag type="success" size="small" style="margin-left: 8px;">ACTIVE</el-tag>
             </div>
           </template>
@@ -173,10 +179,13 @@
               <el-slider v-model="defenseIntensity" :min="1" :max="10" :marks="intensityMarks" />
             </el-form-item>
           </el-form>
-          <el-button type="success" style="width: 100%;" @click="startDefense" :loading="defenseLoading" :disabled="!backendStatus">
-            <el-icon><Umbrella /></el-icon> 启用防御
+          <el-button type="success" style="width: 100%;" @click="startDefense" :loading="defenseLoading"
+            :disabled="!backendStatus">
+            <el-icon>
+              <Umbrella />
+            </el-icon> 启用防御
           </el-button>
-          
+
           <!-- 防御状态 -->
           <div style="margin-top: 14px;">
             <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 8px;">当前防御</div>
@@ -194,26 +203,37 @@
         <el-card shadow="hover" class="tech-card" style="margin-bottom: 14px;">
           <template #header>
             <div class="card-title">
-              <el-icon><Cpu /></el-icon> AI 决策中心
+              <el-icon>
+                <Cpu />
+              </el-icon> AI 决策中心
               <el-tag type="success" size="small" style="margin-left: 8px;">GLM-4</el-tag>
             </div>
           </template>
-          <el-button type="primary" style="width: 100%;" @click="aiAnalyze" :loading="aiLoading" :disabled="!backendStatus">
-            <el-icon><Cpu /></el-icon> 启动 AI 分析
+          <el-button type="primary" style="width: 100%;" @click="aiAnalyze" :loading="aiLoading"
+            :disabled="!backendStatus">
+            <el-icon>
+              <Cpu />
+            </el-icon> 启动 AI 分析
           </el-button>
-          
+
           <div v-if="aiLoading" style="margin-top: 14px; text-align: center; padding: 20px;">
-            <el-icon :size="32" style="color: var(--purple); animation: spin 1.5s linear infinite;"><Loading /></el-icon>
+            <el-icon :size="32" style="color: var(--purple); animation: spin 1.5s linear infinite;">
+              <Loading />
+            </el-icon>
             <p style="color: var(--text-muted); margin-top: 8px; font-size: 12px;">AI 正在分析安全态势...</p>
           </div>
-          
-          <div v-else-if="aiResult" style="margin-top: 14px; color: var(--text-secondary); line-height: 1.7; font-size: 13px;" v-html="aiResult"></div>
-          
+
+          <div v-else-if="aiResult"
+            style="margin-top: 14px; color: var(--text-secondary); line-height: 1.7; font-size: 13px;"
+            v-html="aiResult"></div>
+
           <div v-else style="margin-top: 14px; text-align: center; padding: 20px; color: var(--text-muted);">
-            <el-icon :size="32"><Cpu /></el-icon>
+            <el-icon :size="32">
+              <Cpu />
+            </el-icon>
             <p style="font-size: 12px; margin-top: 8px;">点击启动 AI 安全分析</p>
           </div>
-          
+
           <!-- AI 建议快速操作 -->
           <div v-if="aiSuggestions.length > 0" style="margin-top: 14px;">
             <el-divider style="margin: 10px 0;" />
@@ -232,13 +252,15 @@
         <el-card shadow="hover" class="tech-card" style="margin-bottom: 14px;">
           <template #header>
             <div class="card-title">
-              <el-icon><Monitor /></el-icon> 实时状态
+              <el-icon>
+                <Monitor />
+              </el-icon> 实时状态
               <el-tag :type="backendStatus ? 'success' : 'danger'" size="small" style="margin-left: 8px;">
                 {{ backendStatus ? '正常' : '异常' }}
               </el-tag>
             </div>
           </template>
-          
+
           <el-descriptions :column="1" size="small" border>
             <el-descriptions-item label="靶场引擎">
               <el-tag type="success" size="small">运行中</el-tag>
@@ -256,13 +278,15 @@
               <span style="color: var(--success);">{{ blockedCount }}</span> 次
             </el-descriptions-item>
           </el-descriptions>
-          
+
           <div style="margin-top: 14px;">
             <el-button type="primary" style="width: 100%;" @click="goToEnv">
-              <el-icon><Setting /></el-icon> 管理靶场
+              <el-icon>
+                <Setting />
+              </el-icon> 管理靶场
             </el-button>
           </div>
-          
+
           <!-- 系统资源监控 -->
           <div style="margin-top: 14px;">
             <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 8px;">系统资源</div>
@@ -285,22 +309,29 @@
     <el-card shadow="hover" class="tech-card" style="margin-top: 14px;">
       <template #header>
         <div style="display: flex; justify-content: space-between; align-items: center;">
-          <div class="card-title"><el-icon><Connection /></el-icon> 网络拓扑</div>
+          <div class="card-title"><el-icon>
+              <Connection />
+            </el-icon> 网络拓扑</div>
           <div style="display: flex; gap: 8px;">
             <el-button-group>
-              <el-button size="small" :type="topoView === 'svg' ? 'primary' : ''" @click="topoView = 'svg'">SVG</el-button>
-              <el-button size="small" :type="topoView === 'canvas' ? 'primary' : ''" @click="topoView = 'canvas'">Canvas</el-button>
+              <el-button size="small" :type="topoView === 'svg' ? 'primary' : ''"
+                @click="topoView = 'svg'">SVG</el-button>
+              <el-button size="small" :type="topoView === 'canvas' ? 'primary' : ''"
+                @click="topoView = 'canvas'">Canvas</el-button>
             </el-button-group>
             <el-button size="small" @click="loadTopo" :loading="topoLoading">
-              <el-icon><Refresh /></el-icon> 刷新
+              <el-icon>
+                <Refresh />
+              </el-icon> 刷新
             </el-button>
           </div>
         </div>
       </template>
       <div ref="topoRef" class="topo-box" style="height: 360px;"></div>
-      
+
       <!-- 拓扑节点信息 -->
-      <div v-if="selectedNode" style="margin-top: 14px; padding: 12px; background: rgba(8,10,20,0.5); border-radius: 8px;">
+      <div v-if="selectedNode"
+        style="margin-top: 14px; padding: 12px; background: rgba(8,10,20,0.5); border-radius: 8px;">
         <div style="display: flex; justify-content: space-between; align-items: center;">
           <div>
             <span style="color: var(--cyan); font-weight: 600;">{{ selectedNode.name }}</span>
@@ -364,14 +395,14 @@ async function loadStats() {
     backendStatus.value = true
     const data = res.data || {}
     const statsData = data.stats || {}
-    
+
     // 使用真实数据
     stats.value[0].value = (statsData.health || 95) + '%'
     stats.value[0].class = 'stat-active'
     stats.value[1].value = statsData.alerts > 5 ? '中' : '低'
     stats.value[2].value = '0%'
     stats.value[3].value = '运行中'
-    
+
     activeTargets.value = statsData.environments || 0
     activeRules.value = statsData.defenses || 0
     todayAttacks.value = statsData.attacks || 0
@@ -379,7 +410,7 @@ async function loadStats() {
     cpuUsage.value = 35
     memUsage.value = 42
     lastUpdate.value = new Date().toLocaleTimeString('zh-CN')
-  } catch { 
+  } catch {
     backendStatus.value = false
     stats.value[0].value = '--'
     stats.value[1].value = '--'
@@ -493,7 +524,7 @@ function drawTopoFromData(nodes, links) {
     const label = typeLabels[n.type] || n.name
     const isAttacker = n.type === 'attacker'
     const isTarget = n.type === 'target' || n.type === 'range'
-    
+
     return `
       <g class="topo-node" data-id="${n.id}" data-type="${n.type}">
         <circle cx="${cx}" cy="${cy}" r="22" fill="#0a0a14" stroke="${color}" stroke-width="2" 
@@ -529,9 +560,9 @@ function drawTopoFromData(nodes, links) {
     <text x="${w - 10}" y="${h - 10}" text-anchor="end" fill="#606888" font-size="9" 
       font-family="var(--font-mono)">实时拓扑 · AI-SEC-RANGE</text>
   </svg>`
-  
+
   el.innerHTML = svg
-  
+
   // 添加节点点击事件
   el.querySelectorAll('.topo-node').forEach(nodeEl => {
     nodeEl.addEventListener('click', () => {
@@ -548,15 +579,15 @@ function drawTopoFromData(nodes, links) {
 async function startAttack() {
   attackLoading.value = true
   try {
-    const res = await axios.post('/api/attack/create', { 
+    const res = await axios.post('/api/attack/create', {
       name: attackType.value + '测试',
-      attack_type: attackType.value, 
+      attack_type: attackType.value,
       target: 'localhost:' + targetPort.value,
       port: targetPort.value,
       intensity: attackIntensity.value
     })
     ElMessage.success('攻击已启动')
-    
+
     // 添加到最近攻击记录
     recentAttacks.value.unshift({
       id: Date.now(),
@@ -564,7 +595,7 @@ async function startAttack() {
       time: new Date().toLocaleTimeString('zh-CN'),
       success: true
     })
-    
+
     await loadStats()
   } catch (e) {
     recentAttacks.value.unshift({
@@ -585,7 +616,7 @@ async function aiAnalyze() {
     const res = await axios.post('/api/ai/analyze', {})
     const data = res.data?.data || {}
     aiResult.value = data.analysis || '分析完成：系统运行正常，未发现明显安全威胁。'
-    
+
     // 提取建议
     const suggestions = []
     if (aiResult.value.includes('建议')) {
@@ -600,9 +631,9 @@ async function aiAnalyze() {
       })
     }
     aiSuggestions.value = suggestions.slice(0, 3)
-    
+
     ElMessage.success('AI 分析完成')
-  } catch { 
+  } catch {
     ElMessage.error('AI 分析失败')
     aiResult.value = '<div style="color: var(--danger);">分析失败，请检查后端服务</div>'
   }
@@ -612,9 +643,9 @@ async function aiAnalyze() {
 async function startDefense() {
   defenseLoading.value = true
   try {
-    const res = await axios.post('/api/defense/create', { 
+    const res = await axios.post('/api/defense/create', {
       name: defenseType.value + '防御规则',
-      defense_type: defenseType.value, 
+      defense_type: defenseType.value,
       description: '快速防御规则',
       enabled: true,
       coverage: defenseIntensity.value * 10
@@ -662,6 +693,7 @@ onUnmounted(() => {
   align-items: center;
   gap: 8px;
 }
+
 .backend-warning code {
   font-family: var(--font-mono);
   background: rgba(255, 68, 102, 0.15);
@@ -717,6 +749,8 @@ onUnmounted(() => {
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 </style>

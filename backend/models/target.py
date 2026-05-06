@@ -91,6 +91,35 @@ class Target:
         return None
     
     @staticmethod
+    def create(name=None, image=None, status=None, ports=None, user_id=None, **kwargs):
+        """创建目标环境"""
+        try:
+            conn = db_service.get_connection()
+            if conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    INSERT INTO targets (name, type, ip, port, os, status, config, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    name or f"target_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+                    kwargs.get('type', 'container'),
+                    kwargs.get('ip', '127.0.0.1'),
+                    kwargs.get('port', 8080),
+                    image or kwargs.get('os', 'Linux'),
+                    status or 'creating',
+                    kwargs.get('config', '{}'),
+                    datetime.now().isoformat(),
+                    datetime.now().isoformat()
+                ))
+                target_id = cursor.lastrowid
+                conn.commit()
+                conn.close()
+                return Target.get_by_id(target_id)
+        except Exception as e:
+            logger.error(f"创建目标失败: {e}")
+        return None
+
+    @staticmethod
     def list_all():
         """获取所有目标"""
         try:
@@ -209,3 +238,49 @@ class Target:
             'created_at': self.created_at,
             'updated_at': self.updated_at
         }
+    
+
+    def update(self, **kwargs):
+        """更新靶场属性"""
+        try:
+            conn = db_service.get_connection()
+            if conn:
+                cursor = conn.cursor()
+                updates = []
+                params = []
+                
+                if 'name' in kwargs and kwargs['name'] is not None:
+                    updates.append("name = ?")
+                    params.append(kwargs['name'])
+                if 'status' in kwargs and kwargs['status'] is not None:
+                    updates.append("status = ?")
+                    params.append(kwargs['status'])
+                if 'port' in kwargs and kwargs['port'] is not None:
+                    updates.append("port = ?")
+                    params.append(kwargs['port'])
+                if 'os' in kwargs and kwargs['os'] is not None:
+                    updates.append("os = ?")
+                    params.append(kwargs['os'])
+                if 'type' in kwargs and kwargs['type'] is not None:
+                    updates.append("type = ?")
+                    params.append(kwargs['type'])
+                
+                if updates:
+                    query = f"UPDATE targets SET {', '.join(updates)}, updated_at = ? WHERE target_id = ?"
+                    params.append(datetime.now().isoformat())
+                    params.append(self.target_id)
+                    cursor.execute(query, params)
+                    conn.commit()
+                    
+                    # 更新当前对象属性
+                    for key, value in kwargs.items():
+                        if hasattr(self, key):
+                            setattr(self, key, value)
+                
+                conn.close()
+                return True
+        except Exception as e:
+            logger.error(f"更新靶场失败: {e}")
+        return False
+
+    

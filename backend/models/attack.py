@@ -6,6 +6,7 @@ import sqlite3
 from datetime import datetime
 import json
 import logging
+import random  # 添加 random 导入
 import sys
 from pathlib import Path
 
@@ -27,17 +28,18 @@ class Attack:
         self.user_id = user_id
         self.name = name
         self.attack_type = attack_type
-        self.target = target  # 目标地址，例如 '127.0.0.1' 或 'localhost'
-        self.port = port      # 目标端口
-        self.intensity = intensity # 攻击强度
+        self.target = target
+        self.port = port
+        self.intensity = intensity
         self.status = status
         self.result = result
         self.start_time = start_time
         self.end_time = end_time
         self.created_at = created_at
     
+
     @staticmethod
-    def create(name, attack_type, target, port, intensity, user_id):
+    def create(name, attack_type, target, port, intensity, user_id, target_id=None, config=None):
         """创建新的攻击记录"""
         try:
             conn = db_service.get_connection()
@@ -50,7 +52,9 @@ class Attack:
                 attack_id = cursor.lastrowid
                 conn.commit()
                 conn.close()
-                return Attack(attack_id=attack_id, user_id=user_id, name=name, attack_type=attack_type, target=target, port=port, intensity=intensity, status='pending', created_at=datetime.now().isoformat())
+                return Attack(attack_id=attack_id, user_id=user_id, name=name, attack_type=attack_type, 
+                            target=target, port=port, intensity=intensity, status='pending', 
+                            created_at=datetime.now().isoformat())
         except Exception as e:
             logger.error(f"创建攻击记录失败: {e}")
         return None
@@ -86,15 +90,19 @@ class Attack:
         return None
     
     @staticmethod
-    def list_all(user_id, limit=100, offset=0, status=None, attack_type=None):
+    def list_all(user_id=None, limit=100, offset=0, status=None, attack_type=None):
         """获取攻击记录列表"""
         try:
             conn = db_service.get_connection()
             if conn:
                 cursor = conn.cursor()
                 
-                query = "SELECT * FROM attacks WHERE user_id = ?"
-                params = [user_id]
+                if user_id:
+                    query = "SELECT * FROM attacks WHERE user_id = ?"
+                    params = [user_id]
+                else:
+                    query = "SELECT * FROM attacks"
+                    params = []
                 
                 conditions = []
                 if status:
@@ -136,15 +144,19 @@ class Attack:
         return []
     
     @staticmethod
-    def count(user_id, status=None):
+    def count(user_id=None, status=None):
         """统计攻击记录数量"""
         try:
             conn = db_service.get_connection()
             if conn:
                 cursor = conn.cursor()
                 
-                query = "SELECT COUNT(*) FROM attacks WHERE user_id = ?"
-                params = [user_id]
+                if user_id:
+                    query = "SELECT COUNT(*) FROM attacks WHERE user_id = ?"
+                    params = [user_id]
+                else:
+                    query = "SELECT COUNT(*) FROM attacks"
+                    params = []
                 
                 if status:
                     query += " AND status = ?"
@@ -159,24 +171,35 @@ class Attack:
         return 0
     
     @staticmethod
-    def get_stats(user_id):
+    def get_stats(user_id=None):
         """获取攻击统计"""
         try:
             conn = db_service.get_connection()
             if conn:
                 cursor = conn.cursor()
                 
-                # 总数
-                cursor.execute("SELECT COUNT(*) FROM attacks WHERE user_id = ?", (user_id,))
-                total = cursor.fetchone()[0]
-                
-                # 按状态统计
-                cursor.execute("SELECT status, COUNT(*) FROM attacks WHERE user_id = ? GROUP BY status", (user_id,))
-                status_counts = {row[0]: row[1] for row in cursor.fetchall()}
-                
-                # 按类型统计
-                cursor.execute("SELECT attack_type, COUNT(*) FROM attacks WHERE user_id = ? GROUP BY attack_type", (user_id,))
-                type_counts = {row[0]: row[1] for row in cursor.fetchall()}
+                if user_id:
+                    # 总数
+                    cursor.execute("SELECT COUNT(*) FROM attacks WHERE user_id = ?", (user_id,))
+                    total = cursor.fetchone()[0]
+                    
+                    # 按状态统计
+                    cursor.execute("SELECT status, COUNT(*) FROM attacks WHERE user_id = ? GROUP BY status", (user_id,))
+                    status_counts = {row[0]: row[1] for row in cursor.fetchall()}
+                    
+                    # 按类型统计
+                    cursor.execute("SELECT attack_type, COUNT(*) FROM attacks WHERE user_id = ? GROUP BY attack_type", (user_id,))
+                    type_counts = {row[0]: row[1] for row in cursor.fetchall()}
+                else:
+                    # 全局统计
+                    cursor.execute("SELECT COUNT(*) FROM attacks")
+                    total = cursor.fetchone()[0]
+                    
+                    cursor.execute("SELECT status, COUNT(*) FROM attacks GROUP BY status")
+                    status_counts = {row[0]: row[1] for row in cursor.fetchall()}
+                    
+                    cursor.execute("SELECT attack_type, COUNT(*) FROM attacks GROUP BY attack_type")
+                    type_counts = {row[0]: row[1] for row in cursor.fetchall()}
                 
                 conn.close()
                 
@@ -189,6 +212,18 @@ class Attack:
             logger.error(f"获取攻击统计失败: {e}")
         return {'total': 0, 'status_counts': {}, 'type_counts': {}}
     
+    @staticmethod
+    def get_attack_types():
+        """获取攻击类型列表"""
+        return [
+            {'type': 'SQL注入', 'category': 'Web攻击', 'description': 'SQL注入攻击'},
+            {'type': 'XSS攻击', 'category': 'Web攻击', 'description': '跨站脚本攻击'},
+            {'type': 'CSRF攻击', 'category': 'Web攻击', 'description': '跨站请求伪造'},
+            {'type': '命令执行', 'category': '系统攻击', 'description': '命令注入攻击'},
+            {'type': '端口扫描', 'category': '信息收集', 'description': '端口扫描'},
+            {'type': '暴力破解', 'category': '认证攻击', 'description': '暴力破解'}
+        ]
+    
     def save(self):
         """保存攻击记录"""
         try:
@@ -197,18 +232,19 @@ class Attack:
                 cursor = conn.cursor()
                 
                 if self.attack_id:
-                    # 更新现有记录
                     cursor.execute("""
                         UPDATE attacks SET 
-                        user_id = ?, name = ?, attack_type = ?, target = ?, port = ?, intensity = ?, status = ?, result = ?, start_time = ?, end_time = ?
+                        user_id = ?, name = ?, attack_type = ?, target = ?, port = ?, 
+                        intensity = ?, status = ?, result = ?, start_time = ?, end_time = ?
                         WHERE attack_id = ?
-                    """, (self.user_id, self.name, self.attack_type, self.target, self.port, self.intensity, self.status, self.result, self.start_time, self.end_time, self.attack_id))
+                    """, (self.user_id, self.name, self.attack_type, self.target, self.port,
+                          self.intensity, self.status, self.result, self.start_time, self.end_time, self.attack_id))
                 else:
-                    # 创建新记录
                     cursor.execute("""
                         INSERT INTO attacks (user_id, name, attack_type, target, port, intensity, status, result, start_time, end_time, created_at)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """, (self.user_id, self.name, self.attack_type, self.target, self.port, self.intensity, self.status, self.result, self.start_time, self.end_time, datetime.now().isoformat()))
+                    """, (self.user_id, self.name, self.attack_type, self.target, self.port,
+                          self.intensity, self.status, self.result, self.start_time, self.end_time, datetime.now().isoformat()))
                     self.attack_id = cursor.lastrowid
                 
                 conn.commit()
@@ -256,17 +292,14 @@ class Attack:
         return False
     
     def execute(self):
-        """执行攻击 - 模拟攻击逻辑"""
-        # 这里可以根据 attack_type, target, port, intensity 实现具体的攻击逻辑
-        # 简化处理，直接返回模拟结果
+        """执行攻击"""
         success = random.choice([True, False])
         message = "攻击成功" if success else "攻击失败"
         
-        # 模拟漏洞发现
         vulnerabilities = []
-        if success and random.random() > 0.3: # 30%概率发现漏洞
+        if success and random.random() > 0.3:
             vulnerabilities.append({'name': 'SQL注入漏洞', 'severity': '高'})
-        if success and random.random() > 0.6: # 40%概率发现另一个漏洞
+        if success and random.random() > 0.6:
             vulnerabilities.append({'name': 'XSS漏洞', 'severity': '中'})
             
         return {
@@ -275,41 +308,6 @@ class Attack:
             'details': f"对 {self.target}:{self.port} 进行了 {self.attack_type} 攻击，强度为 {self.intensity}",
             'vulnerabilities_found': vulnerabilities
         }
-
-    @staticmethod
-    def get_attack_types():
-        """获取攻击类型列表 - 使用标准安全攻击类型"""
-        try:
-            # 返回标准的网络安全攻击类型，基于开源安全工具的常见分类
-            attack_types = [
-                {'type': 'SQL注入', 'category': 'Web攻击', 'description': 'SQL注入攻击，利用输入验证漏洞执行恶意SQL语句'},
-                {'type': 'XSS攻击', 'category': 'Web攻击', 'description': '跨站脚本攻击，在网页中注入恶意脚本'},
-                {'type': 'CSRF攻击', 'category': 'Web攻击', 'description': '跨站请求伪造，诱使用户执行非预期操作'},
-                {'type': '文件包含', 'category': 'Web攻击', 'description': '文件包含漏洞，包含服务器上的任意文件'},
-                {'type': '命令执行', 'category': '系统攻击', 'description': '命令注入攻击，执行任意系统命令'},
-                {'type': 'SSRF攻击', 'category': 'Web攻击', 'description': '服务器端请求伪造，利用服务器发起请求'},
-                {'type': 'XXE注入', 'category': 'Web攻击', 'description': 'XML外部实体注入，解析恶意XML实体'},
-                {'type': '权限提升', 'category': '系统攻击', 'description': '权限提升，获得更高权限访问'},
-                {'type': '容器逃逸', 'category': '容器安全', 'description': '容器逃逸，突破容器沙箱访问宿主机'},
-                {'type': '反弹Shell', 'category': '后渗透', 'description': '反弹Shell，获取目标主机的远程控制权'},
-                {'type': '端口扫描', 'category': '信息收集', 'description': '端口扫描，探测开放端口和服务'},
-                {'type': '暴力破解', 'category': '认证攻击', 'description': '暴力破解，尝试大量用户名密码组合'},
-                {'type': '中间人攻击', 'category': '网络攻击', 'description': '中间人攻击，拦截和篡改通信'},
-                {'type': '后门植入', 'category': '后渗透', 'description': '后门植入，在目标系统留下持久化访问方式'},
-                {'type': '横向移动', 'category': '后渗透', 'description': '横向移动，在内网中从一台主机渗透到另一台'},
-                {'type': '数据外传', 'category': '数据安全', 'description': '数据外传，未经授权将敏感数据传输到外部'}
-            ]
-            return attack_types
-        except Exception as e:
-            logger.error(f"获取攻击类型失败: {e}")
-            # 出错时返回默认类型
-            return [
-                {'type': 'SQL注入', 'category': 'Web攻击', 'description': 'SQL注入攻击，利用输入验证漏洞执行恶意SQL语句'},
-                {'type': 'XSS攻击', 'category': 'Web攻击', 'description': '跨站脚本攻击，在网页中注入恶意脚本'},
-                {'type': 'CSRF攻击', 'category': 'Web攻击', 'description': '跨站请求伪造，诱使用户执行非预期操作'},
-                {'type': '命令执行', 'category': '系统攻击', 'description': '命令注入攻击，执行任意系统命令'},
-                {'type': '端口扫描', 'category': '信息收集', 'description': '端口扫描，探测开放端口和服务'}
-            ]
     
     def to_dict(self):
         """转换为字典"""

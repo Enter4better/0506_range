@@ -1,6 +1,3 @@
-"""
-AI攻防靶场管理系统 - 后端启动入口（真实模式）
-"""
 from flask import Flask, jsonify
 from flask_jwt_extended import JWTManager
 from flask_cors import CORS
@@ -8,6 +5,7 @@ import os
 import logging
 from datetime import timedelta
 from dotenv import load_dotenv
+
 
 # 加载环境变量
 load_dotenv()
@@ -124,7 +122,9 @@ if __name__ == '__main__':
     logger.info("=" * 50)
     logger.info("服务地址: http://localhost:5000")
     
-    # 初始化数据库
+    # ========== 初始化所有服务 ==========
+    
+    # 1. 初始化数据库
     try:
         from services.database import db_service
         if db_service.init_database():
@@ -134,8 +134,35 @@ if __name__ == '__main__':
     except Exception as e:
         logger.warning(f"⚠️ 数据库初始化异常: {e}")
     
+    # 2. 初始化异步队列服务
+    try:
+        from services.async_queue import async_queue_service
+        async_queue_service.start()
+        logger.info("✅ 异步队列服务启动")
+    except Exception as e:
+        logger.warning(f"⚠️ 异步队列服务启动失败: {e}")
+    
+    # 3. 初始化监控服务 (Watchdog)
+    try:
+        from services.watchdog import init_watchdog
+        init_watchdog()
+        logger.info("✅ 监控服务启动")
+    except Exception as e:
+        logger.warning(f"⚠️ 监控服务启动失败: {e}")
+    
+    # 4. 初始化 AI Agent 模块
+    try:
+        from agents import get_env_agent, get_attack_agent, get_defense_agent
+        get_env_agent()
+        get_attack_agent()
+        get_defense_agent()
+        logger.info("✅ AI Agent 模块初始化完成")
+    except Exception as e:
+        logger.warning(f"⚠️ AI Agent 初始化失败: {e}")
+    
     logger.info("=" * 50)
     
+    # 启动 Flask 应用
     app.run(
         host='0.0.0.0',
         port=5000,

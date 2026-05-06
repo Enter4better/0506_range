@@ -3,7 +3,7 @@
 日志模型 - SQLite实现
 """
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta  # 添加 timedelta 导入
 import json
 import logging
 import sys
@@ -32,7 +32,7 @@ class Log:
         self.created_at = created_at
     
     @staticmethod
-    def create(level, source, message, details=None, user_id=None):
+    def create(level, source, message, details=None, user_id=None, target_id=None, target=None):
         """创建日志"""
         try:
             conn = db_service.get_connection()
@@ -83,6 +83,7 @@ class Log:
             logger.error(f"获取日志失败: {e}")
         return None
     
+
     @staticmethod
     def list_all(limit=100, offset=0, level=None, source=None, user_id=None):
         """获取日志列表"""
@@ -94,7 +95,6 @@ class Log:
                 query = "SELECT * FROM logs"
                 params = []
                 
-                # 构建WHERE条件
                 conditions = []
                 if level:
                     conditions.append("level = ?")
@@ -104,7 +104,7 @@ class Log:
                     conditions.append("source = ?")
                     params.append(source)
                 
-                if user_id:
+                if user_id:  # 只有当 user_id 有值时才添加条件
                     conditions.append("user_id = ?")
                     params.append(user_id)
                 
@@ -133,6 +133,78 @@ class Log:
         except Exception as e:
             logger.error(f"获取日志列表失败: {e}")
         return []
+   
+    @staticmethod
+    def get_attack_logs(limit=50):
+        """获取攻击日志"""
+        try:
+            conn = db_service.get_connection()
+            if conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT * FROM logs WHERE source = 'attack' 
+                    ORDER BY created_at DESC LIMIT ?
+                """, (limit,))
+                rows = cursor.fetchall()
+                conn.close()
+                return [dict(row) for row in rows]
+        except Exception as e:
+            logger.error(f"获取攻击日志失败: {e}")
+        return []
+    
+    @staticmethod
+    def get_defense_logs(limit=50):
+        """获取防御日志"""
+        try:
+            conn = db_service.get_connection()
+            if conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT * FROM logs WHERE source = 'defense' 
+                    ORDER BY created_at DESC LIMIT ?
+                """, (limit,))
+                rows = cursor.fetchall()
+                conn.close()
+                return [dict(row) for row in rows]
+        except Exception as e:
+            logger.error(f"获取防御日志失败: {e}")
+        return []
+    
+    @staticmethod
+    def get_system_logs(limit=50):
+        """获取系统日志"""
+        try:
+            conn = db_service.get_connection()
+            if conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT * FROM logs WHERE source IN ('system', 'auth', 'env_agent') 
+                    ORDER BY created_at DESC LIMIT ?
+                """, (limit,))
+                rows = cursor.fetchall()
+                conn.close()
+                return [dict(row) for row in rows]
+        except Exception as e:
+            logger.error(f"获取系统日志失败: {e}")
+        return []
+    
+    @staticmethod
+    def get_docker_logs(limit=50):
+        """获取Docker日志"""
+        try:
+            conn = db_service.get_connection()
+            if conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT * FROM logs WHERE source = 'docker' 
+                    ORDER BY created_at DESC LIMIT ?
+                """, (limit,))
+                rows = cursor.fetchall()
+                conn.close()
+                return [dict(row) for row in rows]
+        except Exception as e:
+            logger.error(f"获取Docker日志失败: {e}")
+        return []
     
     @staticmethod
     def get_stats():
@@ -142,11 +214,9 @@ class Log:
             if conn:
                 cursor = conn.cursor()
                 
-                # 总数
                 cursor.execute("SELECT COUNT(*) FROM logs")
                 total = cursor.fetchone()[0]
                 
-                # 按级别统计
                 cursor.execute("SELECT level, COUNT(*) FROM logs GROUP BY level")
                 level_counts = {row[0]: row[1] for row in cursor.fetchall()}
                 
@@ -159,6 +229,26 @@ class Log:
         except Exception as e:
             logger.error(f"获取日志统计失败: {e}")
         return {'total': 0, 'level_counts': {}}
+    
+    @staticmethod
+    def clear_logs(older_than_days=None):
+        """清理日志"""
+        try:
+            conn = db_service.get_connection()
+            if conn:
+                cursor = conn.cursor()
+                if older_than_days:
+                    cutoff = (datetime.now() - timedelta(days=older_than_days)).isoformat()
+                    cursor.execute("DELETE FROM logs WHERE created_at < ?", (cutoff,))
+                else:
+                    cursor.execute("DELETE FROM logs")
+                deleted = cursor.rowcount
+                conn.commit()
+                conn.close()
+                return deleted
+        except Exception as e:
+            logger.error(f"清理日志失败: {e}")
+        return 0
     
     def delete(self):
         """删除日志"""
@@ -173,23 +263,6 @@ class Log:
         except Exception as e:
             logger.error(f"删除日志失败: {e}")
         return False
-    
-    @staticmethod
-    def clear_old(days=30):
-        """清理旧日志"""
-        try:
-            conn = db_service.get_connection()
-            if conn:
-                cursor = conn.cursor()
-                cutoff = datetime.now() - datetime.timedelta(days=days)
-                cursor.execute("DELETE FROM logs WHERE created_at < ?", (cutoff.isoformat(),))
-                conn.commit()
-                deleted = cursor.rowcount
-                conn.close()
-                return deleted
-        except Exception as e:
-            logger.error(f"清理日志失败: {e}")
-        return 0
     
     def to_dict(self):
         """转换为字典"""

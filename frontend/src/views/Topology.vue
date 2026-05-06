@@ -1,865 +1,436 @@
 <template>
   <div class="page-container">
-    <!-- 页面头部 -->
     <div class="page-header">
       <h2 class="page-title">
-        <el-icon><Connection /></el-icon>
-        网络拓扑图
+        <el-icon>
+          <Connection />
+        </el-icon>
+        攻防动态拓扑
       </h2>
-      <p class="page-desc">可视化展示靶场网络架构、设备连接状态和数据流向</p>
+      <p class="page-desc">实时显示攻击阶段和防御等级的动态对抗态势</p>
     </div>
 
-    <!-- 统计卡片 -->
-    <el-row :gutter="16" class="stats-row">
+    <!-- 控制栏 -->
+    <el-card class="tech-card" style="margin-bottom: 16px;">
+      <div class="control-bar">
+        <el-select v-model="selectedTargetId" placeholder="选择靶场" filterable style="width: 250px"
+          @change="onTargetChange">
+          <el-option v-for="target in targets" :key="target.id" :label="target.name" :value="target.id" />
+        </el-select>
+
+        <el-select v-model="selectedSessionId" placeholder="选择演练会话" filterable style="width: 250px"
+          @change="onSessionChange">
+          <el-option v-for="session in sessions" :key="session.session_id" :label="session.session_id"
+            :value="session.session_id" />
+        </el-select>
+
+        <el-button type="primary" @click="loadTopology" :loading="loading">
+          <el-icon>
+            <Refresh />
+          </el-icon>
+          刷新
+        </el-button>
+      </div>
+    </el-card>
+
+    <!-- 攻防态势卡片 -->
+    <el-row :gutter="16" style="margin-bottom: 16px;" v-if="attackStatus">
       <el-col :xs="12" :sm="6">
-        <div class="stat-card stat-cyan">
-          <div class="stat-icon">
-            <el-icon><Box /></el-icon>
+        <div class="status-card attack">
+          <div class="status-label">攻击阶段</div>
+          <div class="status-value">{{ attackStatus.phase_name }}</div>
+          <div class="status-progress">
+            <el-progress :percentage="attackStatus.current_phase * 16.7" :show-text="false" color="#f56c6c" />
           </div>
-          <div class="stat-info">
-            <div class="stat-value">{{ stats.nodes }}</div>
-            <div class="stat-label">网络节点</div>
-          </div>
+          <div class="status-sub">第 {{ attackStatus.current_phase }} / 6 阶段</div>
         </div>
       </el-col>
       <el-col :xs="12" :sm="6">
-        <div class="stat-card stat-success">
-          <div class="stat-icon">
-            <el-icon><CircleCheck /></el-icon>
+        <div class="status-card defense">
+          <div class="status-label">防御等级</div>
+          <div class="status-value">{{ defenseStatus.level_name }}</div>
+          <div class="status-progress">
+            <el-progress :percentage="defenseStatus.current_level * 20" :show-text="false" color="#67c23a" />
           </div>
-          <div class="stat-info">
-            <div class="stat-value">{{ stats.running }}</div>
-            <div class="stat-label">运行设备</div>
-          </div>
+          <div class="status-sub">等级 {{ defenseStatus.current_level }} / 5</div>
         </div>
       </el-col>
       <el-col :xs="12" :sm="6">
-        <div class="stat-card stat-purple">
-          <div class="stat-icon">
-            <el-icon><Connection /></el-icon>
-          </div>
-          <div class="stat-info">
-            <div class="stat-value">{{ stats.links }}</div>
-            <div class="stat-label">网络连接</div>
-          </div>
+        <div class="status-card">
+          <div class="status-label">攻击成功</div>
+          <div class="status-value">{{ attackStatus.successes || 0 }}</div>
+          <div class="status-sub">次成功尝试</div>
         </div>
       </el-col>
       <el-col :xs="12" :sm="6">
-        <div class="stat-card stat-warning">
-          <div class="stat-icon">
-            <el-icon><Warning /></el-icon>
-          </div>
-          <div class="stat-info">
-            <div class="stat-value">{{ stats.alerts }}</div>
-            <div class="stat-label">告警节点</div>
-          </div>
+        <div class="status-card">
+          <div class="status-label">封禁IP</div>
+          <div class="status-value">{{ defenseStatus.blocked_ips?.length || 0 }}</div>
+          <div class="status-sub">个IP已封禁</div>
         </div>
       </el-col>
     </el-row>
 
-    <el-row :gutter="16">
-      <!-- 左侧：拓扑图 -->
-      <el-col :xs="24" :lg="16">
-        <el-card shadow="hover" class="tech-card">
-          <template #header>
-            <div class="card-header">
-              <span class="card-title">
-                <el-icon><Connection /></el-icon>
-                网络拓扑可视化
-              </span>
-              <div class="header-actions">
-                <el-button-group>
-                  <el-button size="small" @click="loadTopo" :loading="loading">
-                    <el-icon><Refresh /></el-icon>
-                    刷新
-                  </el-button>
-                  <el-button size="small" :type="autoRefresh ? 'primary' : ''" @click="toggleAutoRefresh">
-                    <el-icon><Timer /></el-icon>
-                    {{ autoRefresh ? '自动' : '手动' }}
-                  </el-button>
-                </el-button-group>
-                <el-button size="small" @click="zoomIn">
-                  <el-icon><ZoomIn /></el-icon>
-                </el-button>
-                <el-button size="small" @click="zoomOut">
-                  <el-icon><ZoomOut /></el-icon>
-                </el-button>
-                <el-button size="small" @click="resetView">
-                  <el-icon><Aim /></el-icon>
-                  复位
-                </el-button>
-              </div>
-            </div>
-          </template>
-
-          <div ref="topoRef" class="topo-container" @click="handleTopoClick">
-            <div v-if="loading && nodes.length === 0" class="empty-state">
-              <el-icon class="loading-icon"><Loading /></el-icon>
-              <p>加载拓扑数据...</p>
-            </div>
-            <div v-else-if="nodes.length === 0" class="empty-state">
-              <el-icon><Connection /></el-icon>
-              <p>暂无拓扑数据</p>
-              <p class="sub-text">请先在环境管理中创建靶场环境</p>
-            </div>
+    <!-- 拓扑图 -->
+    <el-card class="tech-card" v-if="selectedTarget">
+      <template #header>
+        <div class="card-header">
+          <span><el-icon>
+              <Connection />
+            </el-icon> {{ selectedTarget.name }} - 攻防拓扑</span>
+          <div class="header-tags">
+            <el-tag size="small" type="danger">攻击阶段: {{ attackStatus?.phase_name || '未开始' }}</el-tag>
+            <el-tag size="small" type="success">防御等级: {{ defenseStatus?.level_name || '监控级' }}</el-tag>
           </div>
+        </div>
+      </template>
 
-          <!-- 图例 -->
-          <div class="topo-legend">
-            <div class="legend-item">
-              <span class="legend-dot router"></span>
-              <span>路由器</span>
-            </div>
-            <div class="legend-item">
-              <span class="legend-dot firewall"></span>
-              <span>防火墙</span>
-            </div>
-            <div class="legend-item">
-              <span class="legend-dot ids"></span>
-              <span>入侵检测</span>
-            </div>
-            <div class="legend-item">
-              <span class="legend-dot attacker"></span>
-              <span>攻击机</span>
-            </div>
-            <div class="legend-item">
-              <span class="legend-dot target"></span>
-              <span>靶机</span>
-            </div>
-            <div class="legend-item">
-              <span class="legend-dot dmz"></span>
-              <span>隔离区</span>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-
-      <!-- 右侧：节点详情和操作 -->
-      <el-col :xs="24" :lg="8">
-        <!-- 选中节点详情 -->
-        <el-card shadow="hover" class="tech-card" style="margin-bottom: 16px;">
-          <template #header>
-            <div class="card-header">
-              <span class="card-title">
-                <el-icon><Monitor /></el-icon>
-                节点详情
-              </span>
-            </div>
-          </template>
-          
-          <div v-if="selectedNode" class="node-detail">
-            <div class="detail-header">
-              <div class="node-icon" :style="{ background: getTypeColor(selectedNode.type) }">
-                <el-icon><Monitor /></el-icon>
-              </div>
-              <div class="node-info">
-                <div class="node-name">{{ selectedNode.name }}</div>
-                <el-tag :type="getTypeTag(selectedNode.type)" size="small">
-                  {{ getTypeLabel(selectedNode.type) }}
-                </el-tag>
-              </div>
-            </div>
-            
-            <div class="detail-body">
-              <div class="detail-item">
-                <span class="label">IP 地址</span>
-                <span class="value">{{ selectedNode.ip || '192.168.1.' + Math.floor(Math.random() * 255) }}</span>
-              </div>
-              <div class="detail-item">
-                <span class="label">状态</span>
-                <el-tag :type="selectedNode.status === 'running' ? 'success' : 'warning'" size="small">
-                  {{ selectedNode.status === 'running' ? '运行中' : '已停止' }}
-                </el-tag>
-              </div>
-              <div class="detail-item">
-                <span class="label">连接数</span>
-                <span class="value">{{ getNodeConnections(selectedNode.id) }}</span>
-              </div>
-              <div class="detail-item">
-                <span class="label">流量</span>
-                <span class="value">{{ Math.floor(Math.random() * 100) + ' Mbps' }}</span>
-              </div>
-            </div>
-            
-            <div class="detail-actions">
-              <el-button size="small" type="primary" @click="pingNode(selectedNode)">
-                <el-icon><Aim /></el-icon>
-                Ping 测试
-              </el-button>
-              <el-button size="small" type="success" @click="sshNode(selectedNode)">
-                <el-icon><Link /></el-icon>
-                SSH 连接
-              </el-button>
-              <el-button size="small" type="warning" @click="restartNode(selectedNode)">
-                <el-icon><RefreshRight /></el-icon>
-                重启
-              </el-button>
-            </div>
-          </div>
-          
-          <div v-else class="empty-node">
-            <el-icon><Monitor /></el-icon>
-            <p>点击拓扑图中的节点查看详情</p>
-          </div>
-        </el-card>
-
-        <!-- 网络状态 -->
-        <el-card shadow="hover" class="tech-card" style="margin-bottom: 16px;">
-          <template #header>
-            <div class="card-header">
-              <span class="card-title">
-                <el-icon><DataLine /></el-icon>
-                网络状态
-              </span>
-            </div>
-          </template>
-          <div class="network-status">
-            <div class="status-item">
-              <div class="status-label">总带宽</div>
-              <div class="status-bar">
-                <div class="status-fill" :style="{ width: bandwidthPercent + '%' }"></div>
-              </div>
-              <div class="status-value">{{ bandwidth }} Gbps</div>
-            </div>
-            <div class="status-item">
-              <div class="status-label">延迟</div>
-              <div class="status-value good">{{ latency }} ms</div>
-            </div>
-            <div class="status-item">
-              <div class="status-label">丢包率</div>
-              <div class="status-value good">{{ packetLoss }}%</div>
-            </div>
-          </div>
-        </el-card>
-
-        <!-- 快速操作 -->
-        <el-card shadow="hover" class="tech-card">
-          <template #header>
-            <div class="card-header">
-              <span class="card-title">
-                <el-icon><Operation /></el-icon>
-                快速操作
-              </span>
-            </div>
-          </template>
-          <div class="quick-actions">
-            <el-button size="small" type="primary" @click="exportTopology">
-              <el-icon><Download /></el-icon>
-              导出拓扑
-            </el-button>
-            <el-button size="small" type="success" @click="scanNetwork">
-              <el-icon><Search /></el-icon>
-              扫描网络
-            </el-button>
-            <el-button size="small" type="warning" @click="checkConnectivity">
-              <el-icon><Connection /></el-icon>
-              连通性测试
-            </el-button>
-          </div>
-        </el-card>
-      </el-col>
-    </el-row>
-
-    <!-- 节点操作对话框 -->
-    <el-dialog v-model="showNodeDialog" :title="nodeDialogTitle" width="400px">
-      <div v-if="nodeDialogResult" class="dialog-result">
-        <pre>{{ nodeDialogResult }}</pre>
+      <div ref="topoRef" class="topo-container">
+        <div v-if="loading" class="loading-tip">
+          <el-icon class="is-loading">
+            <Loading />
+          </el-icon>
+          加载拓扑数据...
+        </div>
+        <div v-else-if="!topology.nodes?.length" class="empty-tip">
+          <el-icon :size="48">
+            <Connection />
+          </el-icon>
+          <p>暂无拓扑数据</p>
+        </div>
       </div>
-      <div v-else class="dialog-loading">
-        <el-icon class="loading-icon"><Loading /></el-icon>
-        <p>正在执行...</p>
+
+      <!-- 图例 -->
+      <div class="legend">
+        <div class="legend-item"><span class="dot attacker"></span> 攻击机</div>
+        <div class="legend-item"><span class="dot web"></span> Web服务器</div>
+        <div class="legend-item"><span class="dot database"></span> 数据库</div>
+        <div class="legend-item"><span class="dot waf"></span> WAF/防火墙</div>
+        <div class="legend-item"><span class="dot monitor"></span> 监控系统</div>
+        <div class="legend-item"><span class="dot threat-high"></span> 高危节点</div>
+        <div class="legend-item"><span class="dot threat-critical"></span> 严重威胁</div>
       </div>
-    </el-dialog>
+    </el-card>
+
+    <!-- 未选择时的提示 -->
+    <el-card class="tech-card" v-else>
+      <div class="empty-state">
+        <el-icon :size="48">
+          <Connection />
+        </el-icon>
+        <p>请选择靶场和演练会话查看攻防动态拓扑</p>
+        <p class="sub-text">拓扑将显示攻击阶段和防御等级的变化</p>
+      </div>
+    </el-card>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, nextTick } from 'vue'
-import { ElMessage } from 'element-plus'
-import { 
-  Connection, Refresh, Box, CircleCheck, Warning, Monitor, DataLine,
-  Timer, ZoomIn, ZoomOut, Aim, Loading, Download, Search, Operation,
-  Link, RefreshRight
-} from '@element-plus/icons-vue'
+import { ref, onMounted, nextTick } from 'vue'
+import { Connection, Refresh, Loading } from '@element-plus/icons-vue'
 import axios from 'axios'
 
-// 状态
-const topoRef = ref(null)
+const targets = ref([])
+const sessions = ref([])
+const selectedTargetId = ref('')
+const selectedSessionId = ref('')
+const selectedTarget = ref(null)
+const attackStatus = ref(null)
+const defenseStatus = ref(null)
+const topology = ref({ nodes: [], edges: [] })
 const loading = ref(false)
-const autoRefresh = ref(false)
-const nodes = ref([])
-const links = ref([])
-const selectedNode = ref(null)
-const zoomLevel = ref(1)
-const showNodeDialog = ref(false)
-const nodeDialogTitle = ref('')
-const nodeDialogResult = ref('')
+const topoRef = ref(null)
 
-// 统计数据
-const stats = ref({
-  nodes: '--',
-  running: '--',
-  links: '--',
-  alerts: '--'
-})
-
-// 网络状态
-const bandwidth = ref('1.2')
-const bandwidthPercent = ref(60)
-const latency = ref('12')
-const packetLoss = ref('0.01')
-
-// 类型颜色映射
-const typeColors = {
-  router: '#00e5ff',
-  firewall: '#a855f7',
-  ids: '#a855f7',
-  switch: '#00e5ff',
+// 节点颜色
+const nodeColors = {
   attacker: '#f56c6c',
-  target: '#67c23a',
-  dmz: '#e6a23c',
-  logserver: '#67c23a',
-  range: '#67c23a'
+  web: '#409eff',
+  database: '#67c23a',
+  waf: '#e6a23c',
+  firewall: '#e6a23c',
+  monitor: '#909399',
+  app: '#409eff',
+  backup: '#67c23a',
+  target: '#67c23a'
 }
 
-const typeLabels = {
-  router: '路由器',
+const nodeLabels = {
+  attacker: '攻击者',
+  web: 'Web服务器',
+  database: '数据库',
+  waf: 'WAF',
   firewall: '防火墙',
-  ids: '入侵检测',
-  switch: '交换机',
-  attacker: '攻击机',
-  target: '靶机',
-  dmz: '隔离区',
-  logserver: '分析服务',
-  range: '靶场核心'
+  monitor: '监控系统',
+  app: '应用服务器',
+  backup: '备份服务器',
+  target: '靶场'
 }
 
-function getTypeColor(type) {
-  return typeColors[type] || '#00e5ff'
-}
-
-function getTypeTag(type) {
-  const map = {
-    router: 'info',
-    firewall: 'primary',
-    ids: 'primary',
-    attacker: 'danger',
-    target: 'success',
-    dmz: 'warning'
-  }
-  return map[type] || 'info'
-}
-
-function getTypeLabel(type) {
-  return typeLabels[type] || type
-}
-
-function getNodeConnections(nodeId) {
-  return links.value.filter(l => l.source === nodeId || l.target === nodeId).length
-}
-
-// 加载拓扑数据
-async function loadTopo() {
-  loading.value = true
+async function loadTargets() {
   try {
     const res = await axios.get('/api/topology')
-    nodes.value = res.data?.nodes || res.nodes || []
-    links.value = res.data?.links || res.links || []
-    
-    // 如果没有数据，生成示例数据
-    if (nodes.value.length === 0) {
-      generateSampleData()
+    if (res.data.status === 'success') {
+      targets.value = res.data.targets || []
     }
-    
-    updateStats()
-    await nextTick()
-    drawTopo()
+  } catch (e) {
+    console.error('加载靶场列表失败', e)
+  }
+}
+
+async function loadSessions() {
+  try {
+    const res = await axios.get('/api/agents/sessions')
+    if (res.data.status === 'success') {
+      sessions.value = res.data.sessions || []
+    }
+  } catch (e) {
+    console.error('加载会话列表失败', e)
+  }
+}
+
+async function loadTopology() {
+  if (!selectedTargetId.value) {
+    return
+  }
+
+  loading.value = true
+  try {
+    const params = { target_id: selectedTargetId.value }
+    if (selectedSessionId.value) {
+      params.session_id = selectedSessionId.value
+    }
+
+    const res = await axios.get('/api/topology', { params })
+
+    if (res.data.status === 'success') {
+      selectedTarget.value = res.data.target
+      attackStatus.value = res.data.attack_status
+      defenseStatus.value = res.data.defense_status
+      topology.value = res.data.topology || { nodes: [], edges: [] }
+      await nextTick()
+      drawTopology()
+    }
   } catch (e) {
     console.error('加载拓扑失败', e)
-    generateSampleData()
-    updateStats()
-    await nextTick()
-    drawTopo()
   } finally {
     loading.value = false
   }
 }
 
-// 生成示例数据
-function generateSampleData() {
-  nodes.value = [
-    { id: 'router1', name: 'Router', type: 'router', x: 50, y: 10, status: 'running' },
-    { id: 'fw1', name: 'Firewall', type: 'firewall', x: 50, y: 25, status: 'running' },
-    { id: 'ids1', name: 'IDS', type: 'ids', x: 30, y: 35, status: 'running' },
-    { id: 'switch1', name: 'Switch', type: 'switch', x: 50, y: 40, status: 'running' },
-    { id: 'attacker1', name: 'Attacker', type: 'attacker', x: 15, y: 55, status: 'running' },
-    { id: 'target1', name: 'Target-1', type: 'target', x: 40, y: 60, status: 'running' },
-    { id: 'target2', name: 'Target-2', type: 'target', x: 60, y: 60, status: 'running' },
-    { id: 'dmz1', name: 'DMZ', type: 'dmz', x: 75, y: 45, status: 'running' },
-    { id: 'log1', name: 'LogServer', type: 'logserver', x: 85, y: 25, status: 'running' }
-  ]
-  
-  links.value = [
-    { source: 'router1', target: 'fw1' },
-    { source: 'fw1', target: 'switch1' },
-    { source: 'fw1', target: 'ids1' },
-    { source: 'switch1', target: 'target1' },
-    { source: 'switch1', target: 'target2' },
-    { source: 'switch1', target: 'dmz1' },
-    { source: 'attacker1', target: 'ids1' },
-    { source: 'ids1', target: 'log1' },
-    { source: 'dmz1', target: 'log1' }
-  ]
-}
+function drawTopology() {
+  if (!topoRef.value || !topology.value.nodes?.length) return
 
-// 更新统计
-function updateStats() {
-  stats.value.nodes = nodes.value.length.toString()
-  stats.value.running = nodes.value.filter(n => n.status === 'running').length.toString()
-  stats.value.links = links.value.length.toString()
-  stats.value.alerts = nodes.value.filter(n => n.type === 'dmz' || n.type === 'attacker').length.toString()
-}
-
-// 绘制拓扑图
-function drawTopo() {
-  if (!topoRef.value || nodes.value.length === 0) return
-  
   const el = topoRef.value
   const w = el.clientWidth || 800
   const h = 450
-  
-  const zoom = zoomLevel.value
-  const offsetX = (1 - zoom) * w / 2
-  const offsetY = (1 - zoom) * h / 2
-  
+
+  const nodes = topology.value.nodes
+  const edges = topology.value.edges
+  const nodeCount = nodes.length
+  const centerX = w / 2
+  const centerY = h / 2
+  const radius = Math.min(w, h) * 0.35
+
+  nodes.forEach((node, i) => {
+    const angle = (i / nodeCount) * Math.PI * 2 - Math.PI / 2
+    node.x = centerX + radius * Math.cos(angle)
+    node.y = centerY + radius * Math.sin(angle)
+  })
+
+  let svg = `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" style="background: #0a0a14; border-radius: 8px;">`
+
   // 绘制连接线
-  const nodeMap = {}
-  nodes.value.forEach(n => { nodeMap[n.id] = n })
-  
-  const lineEls = links.value.map(l => {
-    const s = nodeMap[l.source]
-    const t = nodeMap[l.target]
-    if (!s || !t) return ''
-    
-    const sx = s.x * w / 100 * zoom + offsetX
-    const sy = s.y * h / 100 * zoom + offsetY
-    const tx = t.x * w / 100 * zoom + offsetX
-    const ty = t.y * h / 100 * zoom + offsetY
-    
-    const isActive = l.active || Math.random() > 0.7
-    const strokeColor = isActive ? 'rgba(168, 85, 247, 0.6)' : 'rgba(139, 44, 230, 0.2)'
-    const strokeWidth = isActive ? 2 : 1
-    
-    return `<line 
-      x1="${sx}" y1="${sy}" x2="${tx}" y2="${ty}"
-      stroke="${strokeColor}" stroke-width="${strokeWidth}" 
-      stroke-dasharray="${isActive ? 'none' : '4,3'}"
-      class="topo-link" data-source="${l.source}" data-target="${l.target}"
-    />
-    ${isActive ? `<circle cx="${(sx+tx)/2}" cy="${(sy+ty)/2}" r="3" fill="#a855f7">
-      <animate attributeName="opacity" values="1;0.3;1" dur="2s" repeatCount="indefinite"/>
-    </circle>` : ''}`
-  }).join('')
-  
+  edges.forEach(edge => {
+    const source = nodes.find(n => n.id === edge.source)
+    const target = nodes.find(n => n.id === edge.target)
+    if (source && target) {
+      svg += `<line x1="${source.x}" y1="${source.y}" x2="${target.x}" y2="${target.y}" 
+                    stroke="#5090a0" stroke-width="1.5" stroke-dasharray="5,3"
+                    class="topo-edge"/>
+              <text x="${(source.x + target.x) / 2}" y="${(source.y + target.y) / 2 - 5}" 
+                    text-anchor="middle" fill="#606888" font-size="9" font-family="monospace">
+                ${edge.protocol || '连接'} ${edge.port || ''}
+              </text>`
+    }
+  })
+
   // 绘制节点
-  const nodeEls = nodes.value.map(n => {
-    const cx = n.x * w / 100 * zoom + offsetX
-    const cy = n.y * h / 100 * zoom + offsetY
-    const color = getTypeColor(n.type)
-    const label = getTypeLabel(n.type)
-    const isSelected = selectedNode.value?.id === n.id
-    
-    return `
-    <g class="topo-node" data-id="${n.id}" data-type="${n.type}">
-      <!-- 外圈光晕 -->
-      <circle cx="${cx}" cy="${cy}" r="${isSelected ? 28 : 24}" 
-        fill="none" stroke="${color}" stroke-width="1" opacity="0.3"
-        filter="url(#glow)">
-        ${isSelected ? '<animate attributeName="r" values="28;32;28" dur="1.5s" repeatCount="indefinite"/>' : ''}
-      </circle>
-      
-      <!-- 主圆 -->
-      <circle cx="${cx}" cy="${cy}" r="18" 
-        fill="#0a0a14" stroke="${color}" stroke-width="${isSelected ? 2.5 : 1.5}"
-        filter="url(#glow)" style="cursor: pointer"/>
-      
-      <!-- 状态指示 -->
-      <circle cx="${cx + 12}" cy="${cy - 12}" r="4" 
-        fill="${n.status === 'running' ? '#67c23a' : '#e6a23c'}">
-        ${n.status === 'running' ? '<animate attributeName="opacity" values="1;0.5;1" dur="2s" repeatCount="indefinite"/>' : ''}
-      </circle>
-      
-      <!-- 名称 -->
-      <text x="${cx}" y="${cy - 4}" text-anchor="middle" 
-        fill="${color}" font-size="10" font-family="monospace" font-weight="bold">
-        ${n.name}
-      </text>
-      
-      <!-- 类型 -->
-      <text x="${cx}" y="${cy + 8}" text-anchor="middle" 
-        fill="#606888" font-size="8" font-family="monospace">
-        ${label}
-      </text>
-    </g>`
-  }).join('')
-  
-  const svg = `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg" style="background: transparent;">
+  nodes.forEach(node => {
+    const color = node.is_attacker ? '#f56c6c' : (nodeColors[node.type] || '#67c23a')
+    const label = nodeLabels[node.type] || node.name
+    const threat = node.threat
+    const defense = node.defense
+
+    let glowFilter = ''
+    let borderWidth = 2
+
+    if (threat === 'critical') {
+      glowFilter = 'filter="url(#glow-danger)"'
+      borderWidth = 3
+    } else if (threat === 'high') {
+      glowFilter = 'filter="url(#glow-warning)"'
+      borderWidth = 2.5
+    }
+
+    if (defense === 'active') {
+      glowFilter = 'filter="url(#glow-success)"'
+    }
+
+    svg += `
+      <g class="topo-node" data-id="${node.id}" data-type="${node.type}">
+        <circle cx="${node.x}" cy="${node.y}" r="24" fill="#1a1a2e" stroke="${color}" stroke-width="${borderWidth}" ${glowFilter}/>
+        <circle cx="${node.x}" cy="${node.y}" r="5" fill="${color}">
+          ${node.is_attacker ? '<animate attributeName="r" values="5;8;5" dur="1.5s" repeatCount="indefinite"/>' : ''}
+        </circle>
+        <text x="${node.x}" y="${node.y - 10}" text-anchor="middle" fill="${color}" font-size="11" font-weight="bold">
+          ${node.name}
+        </text>
+        <text x="${node.x}" y="${node.y + 4}" text-anchor="middle" fill="#606888" font-size="9">
+          ${label}
+        </text>
+        ${node.port ? `<text x="${node.x}" y="${node.y + 13}" text-anchor="middle" fill="#606888" font-size="8">
+          端口: ${node.port}
+        </text>` : ''}
+        ${threat === 'critical' ? `<text x="${node.x}" y="${node.y - 18}" text-anchor="middle" fill="#f56c6c" font-size="8">
+          ⚠ 严重威胁
+        </text>` : threat === 'high' ? `<text x="${node.x}" y="${node.y - 18}" text-anchor="middle" fill="#e6a23c" font-size="8">
+          ⚠ 高危
+        </text>` : ''}
+      </g>
+    `
+  })
+
+  svg += `
     <defs>
-      <radialGradient id="topoBg" cx="50%" cy="50%" r="70%">
-        <stop offset="0%" stop-color="#1a1a2e"/>
-        <stop offset="100%" stop-color="#0a0a14"/>
-      </radialGradient>
-      <filter id="glow">
+      <filter id="glow-danger">
+        <feGaussianBlur stdDeviation="3" result="blur"/>
+        <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+      <filter id="glow-warning">
         <feGaussianBlur stdDeviation="2" result="blur"/>
-        <feMerge>
-          <feMergeNode in="blur"/>
-          <feMergeNode in="SourceGraphic"/>
-        </feMerge>
+        <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+      <filter id="glow-success">
+        <feGaussianBlur stdDeviation="2" result="blur"/>
+        <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
       </filter>
     </defs>
-    
-    <rect width="${w}" height="${h}" fill="url(#topoBg)" rx="8"/>
-    
-    <!-- 网格背景 -->
-    <g opacity="0.1">
-      ${Array.from({ length: Math.floor(w / 50) }, (_, i) => 
-        `<line x1="${i * 50}" y1="0" x2="${i * 50}" y2="${h}" stroke="#00e5ff" stroke-width="0.5"/>`
-      ).join('')}
-      ${Array.from({ length: Math.floor(h / 50) }, (_, i) => 
-        `<line x1="0" y1="${i * 50}" x2="${w}" y2="${i * 50}" stroke="#00e5ff" stroke-width="0.5"/>`
-      ).join('')}
-    </g>
-    
-    <!-- 连接线 -->
-    ${lineEls}
-    
-    <!-- 节点 -->
-    ${nodeEls}
-    
-    <!-- 标签 -->
-    <text x="${w - 10}" y="${h - 10}" text-anchor="end" 
-      fill="#606888" font-size="9" font-family="monospace">
-      AI-SEC-RANGE · 网络拓扑
-    </text>
-  </svg>`
-  
+  </svg>
+  `
+
   el.innerHTML = svg
-  
-  // 添加点击事件
+
+  // 添加节点点击事件
   el.querySelectorAll('.topo-node').forEach(nodeEl => {
-    nodeEl.addEventListener('click', (e) => {
+    nodeEl.addEventListener('click', () => {
       const nodeId = nodeEl.getAttribute('data-id')
-      const node = nodes.value.find(n => n.id === nodeId)
+      const node = nodes.find(n => n.id === nodeId)
       if (node) {
-        selectedNode.value = node
-        drawTopo()
+        showNodeDetail(node)
       }
     })
   })
 }
 
-// 处理拓扑点击
-function handleTopoClick(e) {
-  // 点击事件已在 drawTopo 中绑定
+function showNodeDetail(node) {
+  alert(`
+    ${node.name}
+    类型: ${nodeLabels[node.type] || node.type}
+    IP: ${node.ip || 'N/A'}
+    端口: ${node.port || 'N/A'}
+    威胁等级: ${node.threat || '正常'}
+    防御状态: ${node.defense || '监控中'}
+  `)
 }
 
-// 缩放操作
-function zoomIn() {
-  if (zoomLevel.value < 2) {
-    zoomLevel.value += 0.2
-    drawTopo()
-  }
+function onTargetChange() {
+  selectedSessionId.value = ''
+  loadTopology()
 }
 
-function zoomOut() {
-  if (zoomLevel.value > 0.5) {
-    zoomLevel.value -= 0.2
-    drawTopo()
-  }
+function onSessionChange() {
+  loadTopology()
 }
 
-function resetView() {
-  zoomLevel.value = 1
-  selectedNode.value = null
-  drawTopo()
-}
-
-// 切换自动刷新
-function toggleAutoRefresh() {
-  autoRefresh.value = !autoRefresh.value
-  ElMessage.success(autoRefresh.value ? '已开启自动刷新' : '已关闭自动刷新')
-}
-
-// 节点操作
-async function pingNode(node) {
-  showNodeDialog.value = true
-  nodeDialogTitle.value = `Ping ${node.name}`
-  nodeDialogResult.value = ''
-  
-  try {
-    const res = await axios.post('/api/topology/ping', { node_id: node.id })
-    nodeDialogResult.value = res.data?.result || `PING ${node.ip || '192.168.1.1'}: 64 bytes, time=12ms ttl=64`
-  } catch (e) {
-    nodeDialogResult.value = `PING ${node.name}: 连接成功\n时间: ${Math.floor(Math.random() * 20) + 5}ms\nTTL: 64`
-  }
-}
-
-async function sshNode(node) {
-  showNodeDialog.value = true
-  nodeDialogTitle.value = `SSH ${node.name}`
-  nodeDialogResult.value = ''
-  
-  try {
-    const res = await axios.post('/api/topology/ssh', { node_id: node.id })
-    nodeDialogResult.value = res.data?.result || `SSH连接已建立: ${node.ip || '192.168.1.1'}:22`
-  } catch (e) {
-    nodeDialogResult.value = `正在连接 ${node.name}...\nSSH连接已就绪\n终端: /dev/tty1`
-  }
-}
-
-async function restartNode(node) {
-  showNodeDialog.value = true
-  nodeDialogTitle.value = `重启 ${node.name}`
-  nodeDialogResult.value = ''
-  
-  try {
-    const res = await axios.post('/api/topology/restart', { node_id: node.id })
-    nodeDialogResult.value = res.data?.result || `${node.name} 正在重启...\n重启完成`
-    node.status = 'running'
-    drawTopo()
-  } catch (e) {
-    nodeDialogResult.value = `${node.name} 重启成功\n状态: 运行中`
-    node.status = 'running'
-    drawTopo()
-  }
-}
-
-// 快速操作
-function exportTopology() {
-  const data = { nodes: nodes.value, links: links.value }
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `topology_${new Date().toISOString().slice(0, 10)}.json`
-  a.click()
-  URL.revokeObjectURL(url)
-  ElMessage.success('拓扑已导出')
-}
-
-async function scanNetwork() {
-  ElMessage.info('正在扫描网络...')
-  try {
-    const res = await axios.post('/api/topology/scan')
-    if (res.data?.nodes) {
-      nodes.value = res.data.nodes
-      links.value = res.data.links || []
-      updateStats()
-      drawTopo()
-      ElMessage.success('网络扫描完成')
-    }
-  } catch (e) {
-    ElMessage.warning('扫描功能需要后端支持')
-  }
-}
-
-async function checkConnectivity() {
-  ElMessage.info('正在测试连通性...')
-  try {
-    const res = await axios.get('/api/topology/connectivity')
-    if (res.data?.status === 'success') {
-      bandwidth.value = res.data.bandwidth || '1.2'
-      latency.value = res.data.latency || '12'
-      packetLoss.value = res.data.packet_loss || '0.01'
-      ElMessage.success('连通性测试完成')
-    }
-  } catch (e) {
-    ElMessage.warning('连通性测试需要后端支持')
-  }
-}
-
-// 定时刷新
-let interval = null
 onMounted(() => {
-  loadTopo()
-  interval = setInterval(() => {
-    if (autoRefresh.value) {
-      loadTopo()
-    }
-  }, 10000)
-})
-
-onUnmounted(() => {
-  if (interval) clearInterval(interval)
+  loadTargets()
+  loadSessions()
+  window.addEventListener('resize', () => {
+    if (topology.value.nodes?.length) drawTopology()
+  })
 })
 </script>
 
 <style scoped>
-.stats-row {
-  margin-bottom: 16px;
-}
-
-.stat-card {
+.control-bar {
   display: flex;
+  gap: 16px;
   align-items: center;
-  padding: 16px 20px;
-  background: linear-gradient(135deg, var(--card-bg) 0%, rgba(255,255,255,0.05) 100%);
-  border-radius: 12px;
-  border: 1px solid var(--border-color);
-  transition: all 0.3s ease;
+  flex-wrap: wrap;
 }
 
-.stat-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+.status-card {
+  background: rgba(16, 18, 32, 0.8);
+  border: 1px solid var(--border-mid);
+  border-radius: 8px;
+  padding: 16px;
+  text-align: center;
 }
 
-.stat-icon {
-  width: 48px;
-  height: 48px;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.status-card.attack {
+  border-left: 4px solid #f56c6c;
+}
+
+.status-card.defense {
+  border-left: 4px solid #67c23a;
+}
+
+.status-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.status-value {
   font-size: 24px;
-  margin-right: 16px;
+  font-weight: 700;
+  margin-bottom: 8px;
 }
 
-.stat-cyan .stat-icon {
-  background: linear-gradient(135deg, rgba(0, 229, 255, 0.2) 0%, rgba(0, 229, 255, 0.1) 100%);
-  color: #00e5ff;
+.status-card.attack .status-value {
+  color: #f56c6c;
 }
 
-.stat-success .stat-icon {
-  background: linear-gradient(135deg, rgba(103, 194, 58, 0.2) 0%, rgba(103, 194, 58, 0.1) 100%);
+.status-card.defense .status-value {
   color: #67c23a;
 }
 
-.stat-purple .stat-icon {
-  background: linear-gradient(135deg, rgba(168, 85, 247, 0.2) 0%, rgba(168, 85, 247, 0.1) 100%);
-  color: #a855f7;
+.status-progress {
+  margin: 8px 0;
 }
 
-.stat-warning .stat-icon {
-  background: linear-gradient(135deg, rgba(230, 162, 60, 0.2) 0%, rgba(230, 162, 60, 0.1) 100%);
-  color: #e6a23c;
-}
-
-.stat-value {
-  font-size: 28px;
-  font-weight: 700;
-  line-height: 1.2;
-  color: var(--text-primary);
-}
-
-.stat-label {
-  font-size: 13px;
+.status-sub {
+  font-size: 11px;
   color: var(--text-muted);
-  margin-top: 4px;
-}
-
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 12px;
-}
-
-.card-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-weight: 600;
-  color: var(--text-primary);
-  font-family: var(--font-display) !important;
-  letter-spacing: 0.5px !important;
-}
-
-/* 统计卡片标题使用科技风字体 */
-.stat-label {
-  font-family: var(--font-display) !important;
-  font-size: 13px !important;
-  letter-spacing: 0.3px !important;
-}
-
-.stat-value {
-  font-family: var(--font-display) !important;
-  font-weight: 700 !important;
-}
-
-/* 节点名称 */
-.node-name {
-  font-family: var(--font-ui) !important;
-}
-
-/* 状态标签 */
-.status-label {
-  font-family: var(--font-mono) !important;
-}
-
-/* 状态值 */
-.status-value {
-  font-family: var(--font-mono) !important;
-}
-
-/* 详情标签 */
-.detail-item .label {
-  font-family: var(--font-mono) !important;
-}
-
-/* 详情值 */
-.detail-item .value {
-  font-family: var(--font-mono) !important;
-}
-
-.header-actions {
-  display: flex;
-  gap: 8px;
 }
 
 .topo-container {
   height: 450px;
-  border-radius: 8px;
   overflow: hidden;
-  position: relative;
 }
 
-.empty-state {
+.header-tags {
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  color: var(--text-muted);
+  gap: 8px;
 }
 
-.empty-state .el-icon {
-  font-size: 48px;
-  margin-bottom: 12px;
-  opacity: 0.5;
-}
-
-.loading-icon {
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-
-.sub-text {
-  font-size: 12px;
-  margin-top: 4px;
-}
-
-.topo-legend {
+.legend {
   display: flex;
-  justify-content: center;
   gap: 16px;
-  padding: 12px;
-  margin-top: 12px;
-  border-top: 1px solid var(--border-color);
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-dim);
+  flex-wrap: wrap;
 }
 
 .legend-item {
@@ -870,176 +441,56 @@ onUnmounted(() => {
   color: var(--text-secondary);
 }
 
-.legend-dot {
+.dot {
   width: 12px;
   height: 12px;
   border-radius: 50%;
 }
 
-.legend-dot.router { background: #00e5ff; }
-.legend-dot.firewall { background: #a855f7; }
-.legend-dot.ids { background: #a855f7; }
-.legend-dot.attacker { background: #f56c6c; }
-.legend-dot.target { background: #67c23a; }
-.legend-dot.dmz { background: #e6a23c; }
-
-.node-detail {
-  padding: 8px;
+.dot.attacker {
+  background: #f56c6c;
 }
 
-.detail-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 16px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid var(--border-color);
+.dot.web {
+  background: #409eff;
 }
 
-.node-icon {
-  width: 40px;
-  height: 40px;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
+.dot.database {
+  background: #67c23a;
 }
 
-.node-info {
-  flex: 1;
+.dot.waf {
+  background: #e6a23c;
 }
 
-.node-name {
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin-bottom: 4px;
+.dot.monitor {
+  background: #909399;
 }
 
-.detail-body {
-  margin-bottom: 16px;
+.dot.threat-high {
+  background: #e6a23c;
+  box-shadow: 0 0 4px #e6a23c;
 }
 
-.detail-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 8px 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+.dot.threat-critical {
+  background: #f56c6c;
+  box-shadow: 0 0 6px #f56c6c;
 }
 
-.detail-item .label {
-  font-size: 13px;
-  color: var(--text-muted);
-}
-
-.detail-item .value {
-  font-size: 13px;
-  color: var(--text-primary);
-  font-family: var(--font-mono);
-}
-
-.detail-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.empty-node {
+.loading-tip,
+.empty-tip,
+.empty-state {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 40px;
-  color: var(--text-muted);
-}
-
-.empty-node .el-icon {
-  font-size: 48px;
-  margin-bottom: 12px;
-  opacity: 0.5;
-}
-
-.network-status {
-  padding: 8px;
-}
-
-.status-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
-.status-label {
-  min-width: 60px;
-  font-size: 13px;
-  color: var(--text-muted);
-}
-
-.status-bar {
-  flex: 1;
-  height: 6px;
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 3px;
-  overflow: hidden;
-}
-
-.status-fill {
   height: 100%;
-  background: linear-gradient(90deg, #00e5ff, #a855f7);
-  border-radius: 3px;
-}
-
-.status-value {
-  min-width: 60px;
-  font-size: 12px;
-  color: var(--text-primary);
-  text-align: right;
-  font-family: var(--font-mono);
-}
-
-.status-value.good {
-  color: #67c23a;
-}
-
-.quick-actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.dialog-result {
-  background: rgba(0, 0, 0, 0.2);
-  padding: 16px;
-  border-radius: 8px;
-  font-family: var(--font-mono);
-  font-size: 12px;
-  color: var(--text-secondary);
-  white-space: pre-wrap;
-}
-
-.dialog-loading {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 40px;
   color: var(--text-muted);
+  gap: 12px;
 }
 
-@media (max-width: 768px) {
-  .stats-row .el-col {
-    margin-bottom: 12px;
-  }
-  
-  .topo-legend {
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-  
-  .header-actions {
-    width: 100%;
-    justify-content: flex-end;
-  }
+.sub-text {
+  font-size: 12px;
+  margin-top: 4px;
 }
 </style>

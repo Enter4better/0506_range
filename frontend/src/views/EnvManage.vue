@@ -1,9 +1,12 @@
 <template>
   <div class="page-container">
     <div class="page-header">
-      <h2 class="page-title"><el-icon>
+      <h2 class="page-title">
+        <el-icon>
           <Setting />
-        </el-icon> 靶场环境管理</h2>
+        </el-icon>
+        靶场环境管理
+      </h2>
       <p class="page-desc">
         Docker容器管理 | 运行中 {{ stats.running }} 个 | 总计 {{ stats.total }} 个
       </p>
@@ -54,7 +57,7 @@
             <Plus />
           </el-icon> 创建靶场
         </el-button>
-        <el-button @click="refreshTargets" :loading="loading">
+        <el-button @click="fetchTargets" :loading="loading">
           <el-icon>
             <Refresh />
           </el-icon> 刷新列表
@@ -78,15 +81,13 @@
         </div>
       </template>
 
-      <!-- 加载状态 -->
       <div v-if="loading" style="text-align: center; padding: 40px;">
         <el-icon :size="32" style="color: var(--cyan); animation: spin 1.5s linear infinite;">
           <Loading />
         </el-icon>
-        <p style="color: var(--text-muted); margin-top: 8px; font-size: 12px;">正在加载靶场数据...</p>
+        <p style="color: var(--text-muted); margin-top: 8px;">正在加载靶场数据...</p>
       </div>
 
-      <!-- 空状态 -->
       <div v-else-if="targets.length === 0" style="text-align: center; padding: 40px; color: var(--text-muted);">
         <el-icon :size="48">
           <Box />
@@ -95,7 +96,6 @@
         <p style="font-size: 12px; margin-top: 4px;">点击"创建靶场"按钮开始创建</p>
       </div>
 
-      <!-- 靶场表格 -->
       <el-table v-else :data="targets" stripe style="width: 100%;" size="small">
         <el-table-column prop="name" label="名称" min-width="150">
           <template #default="{ row }">
@@ -109,8 +109,7 @@
         </el-table-column>
         <el-table-column prop="ports" label="端口映射" min-width="100">
           <template #default="{ row }">
-            <span style="color: var(--purple); font-family: var(--font-mono);">{{ row.ports || row.port_mapping || '-'
-              }}</span>
+            <span style="color: var(--purple); font-family: monospace;">{{ row.ports || '-' }}</span>
           </template>
         </el-table-column>
         <el-table-column prop="status" label="状态" width="100">
@@ -125,7 +124,7 @@
             <span style="color: var(--text-muted); font-size: 12px;">{{ row.created || '-' }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="200" fixed="right">
+        <el-table-column label="操作" width="280" fixed="right">
           <template #default="{ row }">
             <el-button-group>
               <el-button v-if="row.status === 'running'" size="small" type="warning" @click="stopTarget(row)">
@@ -178,6 +177,9 @@
           </el-input>
           <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">格式: 主机端口:容器端口</div>
         </el-form-item>
+        <el-form-item label="靶场名称">
+          <el-input v-model="createForm.name" placeholder="可选，不填则自动生成" />
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="showCreateModal = false">取消</el-button>
@@ -202,7 +204,8 @@ const stats = reactive({ running: 0, stopped: 0, total: 0 })
 
 const createForm = reactive({
   image: '',
-  port: '8080:80'
+  port: '8080:80',
+  name: ''
 })
 
 let refreshInterval = null
@@ -212,7 +215,6 @@ async function fetchTargets() {
   try {
     const res = await axios.get('/api/env/list')
     if (res.data.status === 'success') {
-      // 兼容后端返回的 data 或 containers 字段
       targets.value = res.data.containers || res.data.data || []
       updateStats()
     }
@@ -233,31 +235,44 @@ function updateStats() {
   stats.stopped = stats.total - stats.running
 }
 
-// 刷新列表
-async function refreshTargets() {
-  loading.value = true
-  await fetchTargets()
-  ElMessage.success('列表已刷新')
-}
-
-// 创建靶场
+// 创建靶场 - 修复：发送正确的数据格式
+// 修改 createTarget 函数
 async function createTarget() {
+  if (!createForm.image || !createForm.port) {
+    ElMessage.warning('请填写完整信息')
+    return
+  }
+
   try {
-    const res = await axios.post('/api/env/create', createForm)
+    const postData = {
+      image: createForm.image,
+      port: createForm.port,
+      name: createForm.name || ''
+    }
+
+    console.log('发送创建请求:', postData)
+
+    const res = await axios.post('/api/env/create', postData)
+
     if (res.data.status === 'success') {
-      ElMessage.success(`靶场创建成功: ${res.data.name}`)
+      ElMessage.success(`靶场创建成功: ${res.data.name || createForm.image}`)
       showCreateModal.value = false
+      // 重置表单
       createForm.image = ''
       createForm.port = '8080:80'
-      await fetchTargets()
+      createForm.name = ''
+      // 重要：延迟一下再刷新，确保后端容器已完全创建
+      setTimeout(() => {
+        fetchTargets()
+      }, 1000)
     } else {
       ElMessage.error(res.data.msg || '创建失败')
     }
   } catch (err) {
+    console.error('创建失败:', err)
     ElMessage.error('创建靶场失败: ' + (err.response?.data?.msg || err.message))
   }
 }
-
 // 启动靶场
 async function startTarget(target) {
   try {
@@ -271,9 +286,6 @@ async function startTarget(target) {
     }
   } catch (err) {
     ElMessage.error('启动失败')
-    // 模拟成功
-    target.status = 'running'
-    updateStats()
   }
 }
 
@@ -290,9 +302,6 @@ async function stopTarget(target) {
     }
   } catch (err) {
     ElMessage.error('停止失败')
-    // 模拟成功
-    target.status = 'stopped'
-    updateStats()
   }
 }
 
@@ -341,10 +350,23 @@ async function cleanAllTargets() {
 
 // 访问靶场
 function accessTarget(target) {
-  const ports = target.ports || target.port_mapping
-  if (ports) {
-    const port = ports.split(':')[0] || ports.split('-')[0]
-    window.open(`http://localhost:${port}`, '_blank')
+  // 从端口映射中提取主机端口
+  let port = null
+
+  if (target.ports) {
+    // 端口格式可能是 "8081:86/tcp" 或 "8080:80/tcp"
+    const match = target.ports.match(/(\d+):/)
+    if (match) {
+      port = match[1]
+    }
+  }
+
+  if (port) {
+    const url = `http://localhost:${port}`
+    console.log('访问地址:', url)
+    window.open(url, '_blank')
+  } else {
+    ElMessage.warning('无法获取端口信息')
   }
 }
 
@@ -381,31 +403,27 @@ onUnmounted(() => {
   letter-spacing: 0.5px !important;
 }
 
-/* 统计卡片标题使用科技风字体 */
-.stat-label {
-  font-family: var(--font-display) !important;
-  font-size: 13px !important;
-  letter-spacing: 0.3px !important;
-}
-
-.stat-value {
-  font-family: var(--font-display) !important;
-  font-weight: 700 !important;
-}
-
-/* 靶场名称 */
-.target-name {
-  font-family: var(--font-ui) !important;
-}
-
-/* 镜像名称 */
-.image-name {
-  font-family: var(--font-mono) !important;
-}
-
 @keyframes spin {
   to {
     transform: rotate(360deg);
   }
+}
+
+.stat-card {
+  background: linear-gradient(135deg, var(--card-bg) 0%, rgba(255, 255, 255, 0.05) 100%);
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+}
+
+.stat-success .el-statistic__title {
+  color: #67c23a;
+}
+
+.stat-warning .el-statistic__title {
+  color: #e6a23c;
+}
+
+.stat-info .el-statistic__title {
+  color: #409eff;
 }
 </style>
