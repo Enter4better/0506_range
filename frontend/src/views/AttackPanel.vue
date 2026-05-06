@@ -279,7 +279,7 @@ import {
   MagicStick, Position, List, SuccessFilled, Loading,
   FolderAdd, Refresh, CopyDocument, Close, Monitor, Umbrella, Document
 } from '@element-plus/icons-vue'
-import axios from 'axios'
+import request from '@/utils/request'
 
 // 组件
 import StatCard from '@/components/StatCard.vue'
@@ -348,7 +348,7 @@ async function launch() {
   result.value = ''
 
   try {
-    const createRes = await axios.post('/api/attack/create', {
+    const createRes = await request.post('/api/attack/create', {
       name: form.value.name || form.value.type,
       attack_type: form.value.type,
       target: form.value.target + ':' + form.value.port,
@@ -358,7 +358,7 @@ async function launch() {
 
     if (createRes.data.status === 'success') {
       const attackId = createRes.data.attack?.attack_id || Date.now()
-      const execRes = await axios.post(`/api/attack/execute/${attackId}`)
+      const execRes = await request.post(`/api/attack/execute/${attackId}`)
 
       if (execRes.data.status === 'success') {
         result.value = JSON.stringify({ status: 'success', attack_id: attackId, result: '攻击测试完成', vulnerabilities_found: 2 }, null, 2)
@@ -395,7 +395,7 @@ async function aiPlanAttack() {
 
   try {
     // 调用AI接口进行攻击规划
-    const aiRes = await axios.post('/api/agents/attack/plan', {
+    const aiRes = await request.post('/api/agents/attack/plan', {
       target: form.value.target,
       port: form.value.port,
       description: `对目标${form.value.target}:${form.value.port}进行安全测试，请规划合适的攻击策略`
@@ -433,7 +433,7 @@ async function aiPlanAttack() {
 // 数据加载
 async function loadAttackHistory() {
   try {
-    const res = await axios.get('/api/attack/list')
+    const res = await request.get('/api/attack/list')
     if (res.data.status === 'success') attackLogs.value = res.data.attacks || []
   } catch (e) {
     console.error('加载攻击历史失败', e)
@@ -442,7 +442,7 @@ async function loadAttackHistory() {
 
 async function loadStats() {
   try {
-    const res = await axios.get('/api/attack/stats')
+    const res = await request.get('/api/attack/stats')
     if (res.data.status === 'success') {
       const userStats = res.data.user_stats || {}
       stats.total = userStats.total || 0
@@ -457,7 +457,7 @@ async function loadStats() {
 
 async function loadDefenseStats() {
   try {
-    const res = await axios.get('/api/defense/list')
+    const res = await request.get('/api/defense/list')
     if (res.data.status === 'success') {
       const defenses = res.data.defenses || []
       defenseStats.firewallRules = defenses.filter(d => d.defense_type === 'firewall').length
@@ -485,7 +485,7 @@ async function selectTarget() {
   targetDialogVisible.value = true
   loadingTargets.value = true
   try {
-    const res = await axios.get('/api/env/list')
+    const res = await request.get('/api/env/list')
     if (res.data.status === 'success') targets.value = res.data.containers || []
   } catch (e) { ElMessage.error('获取靶场列表失败') }
   finally { loadingTargets.value = false }
@@ -521,7 +521,7 @@ function goToDefense() { window.location.href = '/defense' }
 // 加载攻击类型
 async function loadAttackTypes() {
   try {
-    const res = await axios.get('/api/attack/types')
+    const res = await request.get('/api/attack/types')
     if (res.data.status === 'success' && res.data.types) {
       attackTypes.value = res.data.types
     }
@@ -533,7 +533,7 @@ async function loadAttackTypes() {
 // 加载模板
 async function loadTemplates() {
   try {
-    const res = await axios.get('/api/attack/templates')
+    const res = await request.get('/api/attack/templates')
     if (res.data.status === 'success' && res.data.templates) {
       templates.value = res.data.templates
     }
