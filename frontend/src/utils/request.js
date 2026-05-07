@@ -23,7 +23,13 @@ request.interceptors.request.use(
 
 // 响应拦截器
 request.interceptors.response.use(
-  (response) => response.data,
+  (response) => {
+    // 如果是blob响应，直接返回原始response
+    if (response.config.responseType === "blob") {
+      return response;
+    }
+    return response.data;
+  },
   (err) => {
     console.error("API Error:", err.message);
     return Promise.reject(err);

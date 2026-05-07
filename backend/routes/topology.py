@@ -4,9 +4,11 @@
 """
 from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
+from datetime import datetime
 from models.target import Target
 from agents.attack_agent import get_attack_agent
 from agents.defense_agent import get_defense_agent
+
 
 topology_bp = Blueprint('topology', __name__, url_prefix='/api/topology')
 
@@ -54,7 +56,53 @@ def get_topology():
         return jsonify({'status': 'error', 'msg': str(e)}), 500
 
 
+@topology_bp.route('/export', methods=['GET'])
+def export_topology():
+    """导出拓扑数据"""
+    try:
+        target_id = request.args.get('target_id')
+        session_id = request.args.get('session_id')
+        format_type = request.args.get('format', 'json')
+        
+        if not target_id:
+            return jsonify({'status': 'error', 'msg': '请提供target_id'}), 400
+        
+        target = Target.get_by_id(target_id)
+        if not target:
+            return jsonify({'status': 'error', 'msg': '靶场不存在'}), 404
+        
+        attack_agent = get_attack_agent()
+        defense_agent = get_defense_agent()
+        
+        attack_status = attack_agent.get_session_status(session_id) if session_id else {'current_phase': 1, 'phase_name': '未开始', 'successes': 0}
+        defense_status = defense_agent.get_status(session_id) if session_id else {'current_level': 1, 'level_name': '监控级', 'blocked_ips': []}
+        
+        topology = _generate_dynamic_topology(target, attack_status, defense_status)
+        
+        export_data = {
+            'exported_at': datetime.now().isoformat(),
+            'target': {'id': target.target_id, 'name': target.name, 'ip': target.ip, 'port': target.port, 'os': target.os},
+            'attack_status': attack_status,
+            'defense_status': defense_status,
+            'topology': topology
+        }
+        
+        if format_type == 'json':
+            import json as json_lib
+            output = json_lib.dumps(export_data, ensure_ascii=False, indent=2)
+            return output, 200, {
+                'Content-Type': 'application/json; charset=utf-8',
+                'Content-Disposition': f'attachment; filename=topology_export_{datetime.now().strftime("%Y%m%d_%H%M%S")}.json'
+            }
+        else:
+            return jsonify({'status': 'success', 'data': export_data}), 200
+    except Exception as e:
+        current_app.logger.error(f"导出拓扑失败: {e}")
+        return jsonify({'status': 'error', 'msg': str(e)}), 500
+
+
 def _generate_dynamic_topology(target, attack_status, defense_status):
+
     """根据攻击阶段和防御等级生成动态拓扑"""
     image = target.os or ''
     attack_phase = attack_status.get('current_phase', 1)

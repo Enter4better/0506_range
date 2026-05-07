@@ -617,15 +617,21 @@ async function selectTarget() {
 }
 
 function selectTargetConfirm(target) {
-  if (target.ports) {
-    const portMatch = target.ports.match(/(\d+):/)
-    if (portMatch) form.value.port = portMatch[1]
+  // 从端口映射中提取主机端口
+  if (target.ports && target.ports !== '-') {
+    const portStr = String(target.ports)
+    // 支持格式: "8080:80" 或 "8080" 或 "8080, 9090"
+    const portMatch = portStr.match(/(\d+)/)
+    if (portMatch) {
+      form.value.port = portMatch[1]
+    }
   }
-  form.value.target = 'localhost'
+  form.value.target = target.ip || 'localhost'
   selectedTargetStatus.value = target.status
   targetDialogVisible.value = false
-  ElMessage.success(`已选择靶场: ${target.name}`)
+  ElMessage.success(`已选择靶场: ${target.name}，端口: ${form.value.port}`)
 }
+
 
 function formatResult(text) {
   if (!text) return ''

@@ -327,3 +327,153 @@ def get_agents_status():
         }), 200
     except Exception as e:
         return jsonify({'status': 'error', 'msg': str(e)}), 500
+
+
+# ==================== AI靶场自动生成 API ====================
+
+@agents_bp.route('/ai-range/generate', methods=['POST'])
+def ai_generate_range():
+    """AI靶场自动生成 - 根据自然语言描述自动构建靶场"""
+    try:
+        data = request.get_json()
+        scenario_desc = data.get('description', '')
+        
+        if not scenario_desc:
+            return jsonify({'status': 'error', 'msg': '请提供场景描述'}), 400
+        
+        # 1. 使用EnvAgent分析场景
+        env_agent = get_env_agent(1)
+        config = env_agent.analyze_scenario(scenario_desc)
+        
+        # 2. 记录日志
+        Log.create('info', 'env_agent', 
+                  f"AI靶场生成: 场景分析完成 - {config.get('name', '自定义靶场')}", 
+                  user_id=1)
+        
+        return jsonify({
+            'status': 'success',
+            'config': config,
+            'message': '场景分析完成，请确认配置后点击部署'
+        }), 200
+    except Exception as e:
+        return jsonify({'status': 'error', 'msg': str(e)}), 500
+
+
+
+@agents_bp.route('/ai-range/deploy', methods=['POST'])
+def ai_deploy_range():
+    """AI靶场自动部署 - 根据确认的配置创建靶场环境"""
+    try:
+        data = request.get_json()
+        config = data.get('config', {})
+        
+        if not config or 'components' not in config:
+            return jsonify({'status': 'error', 'msg': '请提供有效的靶场配置'}), 400
+        
+        # 1. 使用EnvAgent创建环境
+        env_agent = get_env_agent(1)
+        result = env_agent.create_environment(config, 1)
+        
+        if result.get('status') == 'running':
+            # 2. 自动启动攻防演练编排
+            orchestrator = get_orchestrator()
+            session = orchestrator.create_scenario(config.get('description', config.get('name', 'AI生成靶场')), 1)
+            
+            Log.create('success', 'env_agent',
+                      f"AI靶场部署成功: {config.get('name', '自定义靶场')} (环境ID: {result.get('environment_id')})",
+                      user_id=1)
+            
+            return jsonify({
+                'status': 'success',
+                'result': result,
+                'session': session,
+                'message': '靶场部署成功，攻防演练已就绪'
+            }), 200
+        else:
+            return jsonify({
+                'status': 'error',
+                'msg': '靶场部署失败',
+                'errors': result.get('errors', [])
+            }), 500
+            
+    except Exception as e:
+        return jsonify({'status': 'error', 'msg': str(e)}), 500
+
+
+
+@agents_bp.route('/ai-range/scenarios', methods=['GET'])
+def ai_list_scenarios():
+    """获取AI可用的场景模板列表"""
+    try:
+        env_agent = get_env_agent(1)
+        scenarios = env_agent.list_available_scenarios()
+        return jsonify({
+            'status': 'success',
+            'scenarios': scenarios
+        }), 200
+    except Exception as e:
+        return jsonify({'status': 'error', 'msg': str(e)}), 500
+
+
+
+# ==================== 攻防演练报告导出 API ====================
+
+@agents_bp.route('/report/export', methods=['GET'])
+def export_exercise_report():
+    """导出攻防演练报告"""
+    try:
+        session_id = request.args.get('session_id')
+        format_type = request.args.get('format', 'json')
+        
+        orchestrator = get_orchestrator()
+        
+        # 获取会话数据
+        if session_id and session_id in orchestrator.sessions:
+            session = orchestrator.sessions[session_id]
+        else:
+            # 如果没有指定session_id，获取最近一个会话
+            if orchestrator.sessions:
+                latest_sid = list(orchestrator.sessions.keys())[-1]
+                session = orchestrator.sessions[latest_sid]
+                session_id = latest_sid
+            else:
+                return jsonify({'status': 'error', 'msg': '没有可导出的演练会话'}), 404
+        
+        # 获取攻击和防御状态
+        attack_agent = get_attack_agent()
+        defense_agent = get_defense_agent()
+        
+        attack_status = attack_agent.get_session_status(session_id)
+        defense_status = defense_agent.get_status(session_id)
+        
+        # 构建报告数据
+        report_data = {
+            'report_title': f"攻防演练报告 - {session.get('environment', {}).get('name', '未知靶场')}",
+            'exported_at': datetime.now().isoformat(),
+            'session_id': session_id,
+            'session_status': session.get('status', 'unknown'),
+            'created_at': session.get('created_at', ''),
+            'environment': session.get('environment', {}),
+            'attack_status': attack_status,
+            'defense_status': defense_status,
+            'total_attacks': len(session.get('attacks', [])),
+            'recent_attacks': session.get('attacks', [])[-20:],
+            'defense_logs': defense_agent.get_defense_logs(50)
+        }
+        
+        if format_type == 'json':
+            import json as json_lib
+            output = json_lib.dumps(report_data, ensure_ascii=False, indent=2)
+            return output, 200, {
+                'Content-Type': 'application/json; charset=utf-8',
+                'Content-Disposition': f'attachment; filename=exercise_report_{session_id}_{datetime.now().strftime("%Y%m%d_%H%M%S")}.json'
+            }
+        else:
+            return jsonify({'status': 'success', 'data': report_data}), 200
+    except Exception as e:
+        current_app.logger.error(f"导出报告失败: {e}")
+        return jsonify({'status': 'error', 'msg': str(e)}), 500
+
+
+
+

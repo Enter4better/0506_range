@@ -1,0 +1,601 @@
+<template>
+    <div class="page-container">
+        <div class="page-header">
+            <h2 class="page-title">
+                <el-icon>
+                    <MagicStick />
+                </el-icon>
+                AI靶场自动生成
+            </h2>
+            <p class="page-desc">通过自然语言描述，AI自动构建高度仿真的网络靶场环境</p>
+        </div>
+
+        <!-- 步骤条 -->
+        <el-steps :active="currentStep" align-center class="gen-steps">
+            <el-step title="场景描述" description="用自然语言描述靶场需求" />
+            <el-step title="AI分析" description="AI自动分析并生成配置" />
+            <el-step title="配置预览" description="确认并调整靶场配置" />
+            <el-step title="部署完成" description="靶场部署并启动演练" />
+        </el-steps>
+
+        <!-- 步骤1: 场景描述 -->
+        <el-card v-show="currentStep === 0" shadow="hover" class="tech-card step-card">
+            <template #header>
+                <div class="card-title">
+                    <el-icon>
+                        <Edit />
+                    </el-icon> 描述你的靶场需求
+                </div>
+            </template>
+
+            <div class="desc-section">
+                <el-input v-model="scenarioDesc" type="textarea" :rows="6"
+                    placeholder="例如：我需要一个包含Web服务器和MySQL数据库的Web安全靶场，包含SQL注入和XSS漏洞，用于测试Web应用防火墙的效果..." maxlength="2000"
+                    show-word-limit class="desc-input" />
+
+                <div class="quick-templates">
+                    <div class="template-label">快速模板：</div>
+                    <div class="template-tags">
+                        <el-tag v-for="(tmpl, idx) in templates" :key="idx"
+                            :type="idx === 0 ? 'primary' : idx === 1 ? 'danger' : 'warning'" class="template-tag"
+                            @click="applyTemplate(tmpl)">
+                            {{ tmpl.name }}
+                        </el-tag>
+                    </div>
+                </div>
+
+                <div class="desc-actions">
+                    <el-button type="primary" size="large" @click="analyzeScenario" :loading="analyzing"
+                        :disabled="!scenarioDesc.trim()">
+                        <el-icon>
+                            <Cpu />
+                        </el-icon> AI分析场景
+                    </el-button>
+                </div>
+            </div>
+        </el-card>
+
+        <!-- 步骤2: AI分析中 -->
+        <el-card v-show="currentStep === 1" shadow="hover" class="tech-card step-card">
+            <template #header>
+                <div class="card-title">
+                    <el-icon>
+                        <Cpu />
+                    </el-icon> AI正在分析场景...
+                </div>
+            </template>
+
+            <div class="analyzing-section">
+                <div class="analyzing-animation">
+                    <el-icon :size="48" class="analyzing-icon">
+                        <Loading />
+                    </el-icon>
+                    <div class="analyzing-text">
+                        <p>环境管理Agent正在分析您的场景描述...</p>
+                        <p class="analyzing-sub">正在匹配场景模板、规划组件配置、设计网络拓扑</p>
+                    </div>
+                </div>
+                <el-progress :percentage="analyzeProgress" :stroke-width="6" striped striped-flow
+                    class="analyze-progress" />
+            </div>
+        </el-card>
+
+        <!-- 步骤3: 配置预览 -->
+        <el-card v-show="currentStep === 2" shadow="hover" class="tech-card step-card">
+            <template #header>
+                <div class="card-title">
+                    <el-icon>
+                        <View />
+                    </el-icon> 靶场配置预览
+                    <el-tag size="small" type="success" style="margin-left: 8px;">AI已生成</el-tag>
+                </div>
+            </template>
+
+            <div v-if="generatedConfig" class="preview-section">
+                <!-- 基本信息 -->
+                <el-descriptions title="基本信息" :column="2" border size="small" class="config-descriptions">
+                    <el-descriptions-item label="靶场名称" label-class-name="desc-label">
+                        <el-input v-model="generatedConfig.name" size="small" />
+                    </el-descriptions-item>
+                    <el-descriptions-item label="场景描述" label-class-name="desc-label">
+                        <el-input v-model="generatedConfig.description" size="small" />
+                    </el-descriptions-item>
+                    <el-descriptions-item label="网络类型" label-class-name="desc-label">
+                        <el-tag size="small">{{ generatedConfig.network?.type || 'bridge' }}</el-tag>
+                    </el-descriptions-item>
+                    <el-descriptions-item label="子网" label-class-name="desc-label">
+                        <code>{{ generatedConfig.network?.subnet || 'N/A' }}</code>
+                    </el-descriptions-item>
+                </el-descriptions>
+
+                <!-- 组件列表 -->
+                <div class="section-title">
+                    <el-icon>
+                        <Monitor />
+                    </el-icon> 组件列表 ({{ generatedConfig.components?.length || 0 }})
+                </div>
+                <el-table :data="generatedConfig.components || []" stripe size="small" class="comp-table">
+                    <el-table-column prop="name" label="组件名称" min-width="120" />
+                    <el-table-column prop="type" label="类型" width="100">
+                        <template #default="{ row }">
+                            <el-tag size="small" type="info">{{ row.type }}</el-tag>
+                        </template>
+                    </el-table-column>
+                    <el-table-column prop="image" label="镜像" min-width="150" />
+                    <el-table-column label="端口映射" min-width="150">
+                        <template #default="{ row }">
+                            <span v-if="row.ports?.length" class="port-list">
+                                <el-tag v-for="p in row.ports" :key="p" size="small" type="warning"
+                                    style="margin-right: 4px;">
+                                    :{{ p }}
+                                </el-tag>
+                            </span>
+                            <span v-else class="text-muted">-</span>
+                        </template>
+                    </el-table-column>
+                </el-table>
+
+                <!-- 漏洞类型（可编辑） -->
+                <div class="section-title">
+                    <el-icon>
+                        <Warning />
+                    </el-icon> 漏洞类型
+                    <el-button size="small" type="danger" plain style="margin-left: 8px;" @click="addVuln">
+                        <el-icon>
+                            <Plus />
+                        </el-icon> 添加
+                    </el-button>
+                </div>
+                <div class="vuln-tags">
+                    <template v-for="(v, idx) in generatedConfig.vulnerabilities || []" :key="idx">
+                        <el-tag type="danger" closable :disable-transitions="false" style="margin: 4px;"
+                            @close="removeVuln(idx)">
+                            {{ v }}
+                        </el-tag>
+                    </template>
+                    <span v-if="!generatedConfig.vulnerabilities?.length" class="text-muted">无预设漏洞</span>
+                </div>
+
+                <!-- 操作按钮 -->
+                <div class="preview-actions">
+                    <el-button size="large" @click="currentStep = 0">
+                        <el-icon>
+                            <Back />
+                        </el-icon> 修改配置
+                    </el-button>
+                    <el-button type="primary" size="large" @click="deployRange" :loading="deploying">
+                        <el-icon>
+                            <Upload />
+                        </el-icon> 确认部署
+                    </el-button>
+                </div>
+
+            </div>
+        </el-card>
+
+        <!-- 步骤4: 部署完成 -->
+        <el-card v-show="currentStep === 3" shadow="hover" class="tech-card step-card">
+            <template #header>
+                <div class="card-title">
+                    <el-icon>
+                        <CircleCheck />
+                    </el-icon> 部署结果
+                </div>
+            </template>
+
+            <div v-if="deployResult" class="result-section">
+                <el-result :icon="deploySuccess ? 'success' : 'error'" :title="deploySuccess ? '靶场部署成功！' : '部署失败'"
+                    :sub-title="deploySuccess ? 'AI靶场已自动构建完成，攻防演练已就绪' : deployError">
+                    <template #extra>
+                        <div v-if="deploySuccess" class="result-info">
+                            <el-descriptions :column="1" border size="small">
+                                <el-descriptions-item label="环境ID">
+                                    <code>{{ deployResult.result?.environment_id || 'N/A' }}</code>
+                                </el-descriptions-item>
+                                <el-descriptions-item label="靶场名称">
+                                    {{ deployResult.result?.name || generatedConfig?.name }}
+                                </el-descriptions-item>
+                                <el-descriptions-item label="组件数量">
+                                    {{ deployResult.result?.components?.length || 0 }} 个
+                                </el-descriptions-item>
+                                <el-descriptions-item label="会话ID" v-if="deployResult.session?.session_id">
+                                    <code>{{ deployResult.session.session_id }}</code>
+                                </el-descriptions-item>
+                            </el-descriptions>
+                        </div>
+                        <div class="result-actions">
+                            <el-button @click="resetAll">
+                                <el-icon>
+                                    <Refresh />
+                                </el-icon> 重新生成
+                            </el-button>
+                            <el-button type="primary" @click="goToEnv">
+                                <el-icon>
+                                    <Monitor />
+                                </el-icon> 查看靶场
+                            </el-button>
+                            <el-button type="success" @click="goToAttack">
+                                <el-icon>
+                                    <Aim />
+                                </el-icon> 进入攻防演练
+                            </el-button>
+                        </div>
+                    </template>
+                </el-result>
+            </div>
+        </el-card>
+    </div>
+</template>
+
+<script setup>
+import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
+import {
+    MagicStick, Edit, Cpu, View, Monitor, Warning,
+    CircleCheck, Upload, Back, Refresh, Aim, Loading, Plus
+} from '@element-plus/icons-vue'
+
+import request from '../utils/request'
+
+const router = useRouter()
+
+const currentStep = ref(0)
+const scenarioDesc = ref('')
+const analyzing = ref(false)
+const analyzeProgress = ref(0)
+const generatedConfig = ref(null)
+const deploying = ref(false)
+const deployResult = ref(null)
+const deploySuccess = ref(false)
+const deployError = ref('')
+const templates = ref([])
+
+// 加载场景模板
+async function loadTemplates() {
+    try {
+        const res = await request.get('/agents/ai-range/scenarios')
+        if (res.status === 'success') {
+            templates.value = res.scenarios || []
+        }
+    } catch (e) {
+        console.error('加载模板失败:', e)
+    }
+}
+
+// 应用模板
+function applyTemplate(tmpl) {
+    scenarioDesc.value = `我需要一个${tmpl.name}：${tmpl.description}，包含${tmpl.vulnerabilities?.join('、') || '多种'}漏洞`
+}
+
+// AI分析场景
+async function analyzeScenario() {
+    if (!scenarioDesc.value.trim()) {
+        ElMessage.warning('请先描述靶场需求')
+        return
+    }
+
+    analyzing.value = true
+    currentStep.value = 1
+    analyzeProgress.value = 0
+
+    // 模拟进度动画
+    const progressInterval = setInterval(() => {
+        if (analyzeProgress.value < 90) {
+            analyzeProgress.value += Math.random() * 15
+        }
+    }, 500)
+
+    try {
+        const res = await request.post('/agents/ai-range/generate', {
+            description: scenarioDesc.value
+        })
+
+        clearInterval(progressInterval)
+        analyzeProgress.value = 100
+
+        if (res.status === 'success') {
+            generatedConfig.value = res.config
+            ElMessage.success('场景分析完成')
+            setTimeout(() => {
+                currentStep.value = 2
+            }, 500)
+        } else {
+            ElMessage.error(res.msg || '分析失败')
+            currentStep.value = 0
+        }
+    } catch (e) {
+        clearInterval(progressInterval)
+        ElMessage.error('AI分析失败: ' + (e.response?.data?.msg || e.message))
+        currentStep.value = 0
+    } finally {
+        analyzing.value = false
+    }
+}
+
+// 部署靶场
+async function deployRange() {
+    if (!generatedConfig.value) return
+
+    deploying.value = true
+
+    try {
+        const res = await request.post('/agents/ai-range/deploy', {
+            config: generatedConfig.value
+        })
+
+        if (res.status === 'success') {
+            deployResult.value = res
+            deploySuccess.value = true
+            currentStep.value = 3
+            ElMessage.success('靶场部署成功！')
+        } else {
+            deploySuccess.value = false
+            deployError.value = res.msg || '部署失败'
+            currentStep.value = 3
+            ElMessage.error('部署失败')
+        }
+    } catch (e) {
+        deploySuccess.value = false
+        deployError.value = e.response?.data?.msg || e.message
+        currentStep.value = 3
+        ElMessage.error('部署失败: ' + deployError.value)
+    } finally {
+        deploying.value = false
+    }
+}
+
+// 重置
+function resetAll() {
+    currentStep.value = 0
+    scenarioDesc.value = ''
+    generatedConfig.value = null
+    deployResult.value = null
+    deploySuccess.value = false
+    deployError.value = ''
+    analyzeProgress.value = 0
+}
+
+// 添加漏洞
+function addVuln() {
+    if (!generatedConfig.value) return
+    if (!generatedConfig.value.vulnerabilities) {
+        generatedConfig.value.vulnerabilities = []
+    }
+    const newVuln = prompt('请输入要添加的漏洞类型：')
+    if (newVuln && newVuln.trim()) {
+        generatedConfig.value.vulnerabilities.push(newVuln.trim())
+    }
+}
+
+// 删除漏洞
+function removeVuln(idx) {
+    if (!generatedConfig.value?.vulnerabilities) return
+    generatedConfig.value.vulnerabilities.splice(idx, 1)
+}
+
+// 跳转
+function goToEnv() {
+    router.push('/env')
+}
+
+function goToAttack() {
+    router.push('/attack')
+}
+
+onMounted(() => {
+    loadTemplates()
+})
+</script>
+
+
+<style scoped>
+.gen-steps {
+    margin-bottom: 24px;
+    padding: 20px;
+    background: rgba(8, 10, 20, 0.6);
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+}
+
+.step-card {
+    min-height: 400px;
+}
+
+.card-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+/* 场景描述 */
+.desc-section {
+    padding: 8px 0;
+}
+
+.desc-input {
+    margin-bottom: 16px;
+}
+
+.desc-input :deep(.el-textarea__inner) {
+    background: rgba(8, 10, 20, 0.6);
+    color: var(--text-primary);
+    border-color: var(--border-color);
+    font-size: 14px;
+    line-height: 1.6;
+}
+
+.desc-input :deep(.el-textarea__inner:focus) {
+    border-color: var(--cyan);
+}
+
+.quick-templates {
+    margin-bottom: 20px;
+}
+
+.template-label {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+}
+
+.template-tags {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.template-tag {
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.template-tag:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0, 229, 255, 0.2);
+}
+
+.desc-actions {
+    text-align: center;
+    margin-top: 24px;
+}
+
+/* AI分析 */
+.analyzing-section {
+    text-align: center;
+    padding: 40px 20px;
+}
+
+.analyzing-animation {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    margin-bottom: 30px;
+}
+
+.analyzing-icon {
+    color: var(--cyan);
+    animation: spin 1.5s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.analyzing-text p {
+    margin: 4px 0;
+    font-size: 16px;
+    color: var(--text-primary);
+}
+
+.analyzing-sub {
+    font-size: 13px !important;
+    color: var(--text-muted) !important;
+}
+
+.analyze-progress {
+    max-width: 400px;
+    margin: 0 auto;
+}
+
+/* 配置预览 */
+.preview-section {
+    padding: 8px 0;
+}
+
+.config-descriptions {
+    margin-bottom: 20px;
+}
+
+.config-descriptions :deep(.el-descriptions__title) {
+    color: var(--cyan);
+    font-size: 14px;
+}
+
+.config-descriptions :deep(.el-descriptions__label) {
+    background: rgba(8, 10, 20, 0.4);
+    color: var(--text-muted);
+}
+
+.config-descriptions :deep(.el-descriptions__content) {
+    background: rgba(8, 10, 20, 0.2);
+    color: var(--text-primary);
+}
+
+.section-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 16px 0 8px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.comp-table {
+    margin-bottom: 16px;
+}
+
+.vuln-tags {
+    margin-bottom: 20px;
+}
+
+.text-muted {
+    color: var(--text-muted);
+    font-size: 13px;
+}
+
+.port-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px;
+}
+
+.preview-actions {
+    display: flex;
+    justify-content: center;
+    gap: 16px;
+    margin-top: 24px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border-color);
+}
+
+/* 部署结果 */
+.result-section {
+    padding: 20px;
+}
+
+.result-info {
+    max-width: 500px;
+    margin: 0 auto 20px;
+}
+
+.result-info :deep(.el-descriptions__label) {
+    background: rgba(8, 10, 20, 0.4);
+    color: var(--text-muted);
+}
+
+.result-info :deep(.el-descriptions__content) {
+    background: rgba(8, 10, 20, 0.2);
+    color: var(--text-primary);
+}
+
+.result-info code {
+    color: var(--cyan);
+    font-family: monospace;
+}
+
+.result-actions {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+</style>

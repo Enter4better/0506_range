@@ -11,6 +11,8 @@ from datetime import datetime
 from typing import Dict, List, Optional, Any
 from pathlib import Path
 
+from flask import current_app
+
 from .base_agent import BaseAgent
 from models.log import Log
 from models.target import Target
@@ -141,7 +143,7 @@ class EnvAgent(BaseAgent):
         }
     
     def create_environment(self, scenario_config: Dict, user_id: str = None) -> Dict:
-        """创建靶场环境"""
+        """创建靶场环境 - 真正调用Docker部署容器"""
         if user_id:
             self.user_id = user_id
             
@@ -160,25 +162,113 @@ class EnvAgent(BaseAgent):
                       f"环境管理Agent开始创建靶场: {scenario_config.get('name', '自定义靶场')}", 
                       user_id=self.user_id)
             
-            # 创建组件
+            # 尝试连接Docker
+            docker_client = None
+            try:
+                import docker
+                docker_client = docker.from_env()
+            except Exception as e:
+                current_app.logger.warning(f"Docker连接失败，将仅创建数据库记录: {e}")
+            
+            # 创建组件（Docker容器）
             components = scenario_config.get('components', [])
             for comp in components:
-                result['components_created'].append({
-                    'name': comp['name'],
-                    'type': comp['type'],
-                    'status': 'running',
-                    'ports': comp.get('ports', [])
-                })
-                Log.create('success', 'env_agent', 
-                          f"组件部署完成: {comp['name']} ({comp['type']})", 
-                          user_id=self.user_id)
+                comp_result = {'name': comp['name'], 'type': comp['type'], 'status': 'pending', 'ports': []}
+                
+                if docker_client:
+                    image = comp.get('image', 'nginx:latest')
+                    container_ports = comp.get('ports', [80])
+                    
+                    # 生成容器名称
+                    from routes.targets import sanitize_container_name
+                    from config import DOCKER_CONFIG
+                    clean_name = sanitize_container_name(comp['name'])
+                    ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+                    container_name = f'{DOCKER_CONFIG["container_prefix"]}{clean_name}_{ts}'
+                    
+                    # 为每个容器端口分配主机端口，从8100开始尝试
+                    # 策略：为每个容器端口分配一个独立的主机端口，所有端口一起尝试
+                    container_deployed = False
+                    # 起始偏移量，每个容器端口分配不同的起始端口
+                    base_port = 8100 + (len(result['components_created']) * 100)
+                    
+                    for attempt_base in range(base_port, 8950, 50):
+                        if container_deployed:
+                            break
+                        try:
+                            port_bindings = {}
+                            assigned_ports = []
+                            for idx, cp in enumerate(container_ports):
+                                host_port = attempt_base + idx * 10
+                                port_bindings[f'{cp}/tcp'] = ('127.0.0.1', host_port)
+                                assigned_ports.append(host_port)
+                            
+                            # 运行容器（一次性传入所有端口映射）
+                            container = docker_client.containers.run(
+                                image,
+                                name=container_name,
+                                detach=True,
+                                ports=port_bindings,
+                                remove=False
+                            )
+                            
+                            import time
+                            time.sleep(1)
+                            container.reload()
+                            
+                            comp_result['status'] = 'running'
+                            comp_result['ports'] = assigned_ports
+                            comp_result['container_id'] = container.short_id
+                            comp_result['container_name'] = container_name
+                            container_deployed = True
+                            
+                            Log.create('success', 'env_agent',
+                                      f"Docker容器部署完成: {comp['name']} ({image}) 端口: {assigned_ports}",
+                                      user_id=self.user_id)
+                            
+                        except Exception as port_err:
+                            # 端口冲突则尝试下一组端口
+                            if 'port is already allocated' in str(port_err) or 'bind' in str(port_err).lower():
+                                continue
+                            else:
+                                # 其他错误直接抛出
+                                comp_result['status'] = 'failed'
+                                comp_result['error'] = str(port_err)
+                                result['errors'].append(f"{comp['name']}: {str(port_err)}")
+                                Log.create('danger', 'env_agent',
+                                          f"组件部署失败: {comp['name']} - {str(port_err)}",
+                                          user_id=self.user_id)
+                                container_deployed = True  # 标记为已处理
+                                break
+                    
+                    if not container_deployed:
+                        comp_result['status'] = 'failed'
+                        comp_result['error'] = '所有候选端口均被占用'
+                        result['errors'].append(f"{comp['name']}: 所有候选端口均被占用")
+                        Log.create('danger', 'env_agent',
+                                  f"组件部署失败: {comp['name']} - 所有候选端口均被占用",
+                                  user_id=self.user_id)
+                else:
+                    # 无Docker时仅记录
+                    comp_result['status'] = 'simulated'
+                    comp_result['ports'] = comp.get('ports', [])
+                    Log.create('info', 'env_agent',
+                              f"组件模拟部署: {comp['name']} (Docker不可用)",
+                              user_id=self.user_id)
+                
+                result['components_created'].append(comp_result)
             
-            # 创建靶场记录
+            # 创建靶场数据库记录
+            all_ports = []
+            for c in result['components_created']:
+                for p in c.get('ports', []):
+                    all_ports.append(str(p))
+            
             target = Target(
                 name=scenario_config.get('name', '自定义靶场'),
                 type='container',
                 ip='127.0.0.1',
-                port=8080,
+                port=','.join(all_ports) if all_ports else '8080',
                 os='Linux',
                 status='running',
                 config=json.dumps(scenario_config)

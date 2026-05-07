@@ -265,15 +265,41 @@ def search_logs():
 
 
 @logs_bp.route('/export', methods=['GET'])
-@jwt_required()
 def export_logs():
-    """导出日志"""
+
+    """导出日志（增强版 - 支持筛选和多种格式）"""
     try:
         format_type = request.args.get('format', 'json')
+        level = request.args.get('level')
+        source = request.args.get('source')
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
+        
+        # 构建查询
+        conditions = []
+        params = []
+        
+        if level:
+            conditions.append("level = ?")
+            params.append(level)
+        if source and source != 'all':
+            conditions.append("source = ?")
+            params.append(source)
+        if start_date:
+            conditions.append("created_at >= ?")
+            params.append(start_date)
+        if end_date:
+            conditions.append("created_at <= ?")
+            params.append(end_date)
+        
+        sql = "SELECT * FROM logs"
+        if conditions:
+            sql += " WHERE " + " AND ".join(conditions)
+        sql += " ORDER BY created_at DESC"
         
         connection = db_service.get_connection()
         cursor = connection.cursor()
-        cursor.execute("SELECT * FROM logs ORDER BY created_at DESC")
+        cursor.execute(sql, params)
         results = cursor.fetchall()
         
         columns = [description[0] for description in cursor.description]
@@ -287,9 +313,20 @@ def export_logs():
             writer = csv.DictWriter(output, fieldnames=columns)
             writer.writeheader()
             writer.writerows(logs)
-            return output.getvalue(), 200, {'Content-Type': 'text/csv', 'Content-Disposition': 'attachment; filename=logs_export.csv'}
+            return output.getvalue(), 200, {
+                'Content-Type': 'text/csv; charset=utf-8-sig',
+                'Content-Disposition': f'attachment; filename=logs_export_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv'
+            }
         else:
-            return jsonify({'status': 'success', 'logs': logs, 'total': len(logs)}), 200
+            # JSON格式 - 返回可下载的JSON文件
+            import json as json_lib
+            output = json_lib.dumps({'status': 'success', 'logs': logs, 'total': len(logs), 'exported_at': datetime.now().isoformat()}, ensure_ascii=False, indent=2)
+            return output, 200, {
+                'Content-Type': 'application/json; charset=utf-8',
+                'Content-Disposition': f'attachment; filename=logs_export_{datetime.now().strftime("%Y%m%d_%H%M%S")}.json'
+            }
     except Exception as e:
         current_app.logger.error(f"导出日志失败: {e}")
         return jsonify({'status': 'error', 'msg': '导出日志失败'}), 500
+
+

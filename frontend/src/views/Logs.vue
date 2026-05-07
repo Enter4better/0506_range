@@ -92,6 +92,20 @@
             <el-button size="small" :type="autoRefresh ? 'primary' : ''" @click="toggleAutoRefresh">
               {{ autoRefresh ? '自动刷新中' : '手动刷新' }}
             </el-button>
+            <el-dropdown trigger="click" @command="handleExport">
+              <el-button size="small" type="warning">
+                <el-icon>
+                  <Download />
+                </el-icon> 导出
+              </el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="json">导出 JSON</el-dropdown-item>
+                  <el-dropdown-item command="csv">导出 CSV</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
+
           </div>
         </div>
       </template>
@@ -134,7 +148,8 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Document, Refresh, Warning, CircleCheck, DataLine, Monitor, Loading } from '@element-plus/icons-vue'
+import { Document, Refresh, Warning, CircleCheck, DataLine, Monitor, Loading, Download } from '@element-plus/icons-vue'
+
 import request from '@/utils/request'
 
 const loading = ref(false)
@@ -255,6 +270,42 @@ function updateAgentStats(rawLogs) {
 function toggleAutoRefresh() {
   autoRefresh.value = !autoRefresh.value
 }
+
+// 导出日志
+async function handleExport(format) {
+  try {
+    const params = { format }
+    if (sourceFilter.value !== 'all') {
+      params.source = sourceFilter.value === 'env' ? 'target' : sourceFilter.value
+    }
+    if (levelFilter.value) {
+      params.level = levelFilter.value
+    }
+
+    const response = await request.get('/logs/export', {
+      params,
+      responseType: 'blob'
+    })
+
+    // 创建下载链接
+    const blob = new Blob([response.data], { type: format === 'csv' ? 'text/csv;charset=utf-8' : 'application/json;charset=utf-8' })
+
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    const now = new Date()
+    const ts = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`
+    a.download = `logs_export_${ts}.${format}`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+    ElMessage.success(`日志已导出为 ${format.toUpperCase()} 格式`)
+  } catch (e) {
+    ElMessage.error('导出失败: ' + (e.message || '未知错误'))
+  }
+}
+
 
 let interval = null
 onMounted(() => {

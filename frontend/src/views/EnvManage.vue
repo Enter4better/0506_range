@@ -67,7 +67,13 @@
             <Delete />
           </el-icon> 清理全部
         </el-button>
+        <el-button type="warning" @click="exportTargets" :disabled="targets.length === 0">
+          <el-icon>
+            <Download />
+          </el-icon> 导出列表
+        </el-button>
       </div>
+
     </el-card>
 
     <!-- 靶场列表 -->
@@ -193,7 +199,8 @@
 <script setup>
 import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Setting, Plus, Refresh, Delete, Monitor, CircleCheck, Warning, DataLine, Box, Loading } from '@element-plus/icons-vue'
+import { Setting, Plus, Refresh, Delete, Monitor, CircleCheck, Warning, DataLine, Box, Loading, Download } from '@element-plus/icons-vue'
+
 import request from '../utils/request'
 
 const targets = ref([])
@@ -389,10 +396,32 @@ function getStatusText(status) {
   return statusMap[status] || status
 }
 
+// 导出靶场列表
+function exportTargets() {
+  try {
+    const dataStr = JSON.stringify(targets.value, null, 2)
+    const blob = new Blob([dataStr], { type: 'application/json;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    const now = new Date()
+    const ts = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`
+    a.download = `targets_export_${ts}.json`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+    ElMessage.success('靶场列表已导出')
+  } catch (e) {
+    ElMessage.error('导出失败: ' + (e.message || '未知错误'))
+  }
+}
+
 onMounted(() => {
   fetchTargets()
   refreshInterval = setInterval(fetchTargets, 30000)
 })
+
 
 onUnmounted(() => {
   if (refreshInterval) {

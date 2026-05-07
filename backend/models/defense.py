@@ -280,7 +280,39 @@ class Defense:
             }
     
     @staticmethod
+    def create(name, defense_type, description='', enabled=True, coverage=0.0):
+        """创建新的防御规则（静态工厂方法）"""
+        try:
+            conn = db_service.get_connection()
+            if conn:
+                cursor = conn.cursor()
+                now = datetime.now().isoformat()
+                cursor.execute("""
+                    INSERT INTO defenses (name, defense_type, description, enabled, coverage, config, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, (name, defense_type, description, 1 if enabled else 0, coverage, None, now, now))
+                conn.commit()
+                defense_id = cursor.lastrowid
+                conn.close()
+                
+                return Defense(
+                    defense_id=defense_id,
+                    name=name,
+                    defense_type=defense_type,
+                    description=description,
+                    enabled=1 if enabled else 0,
+                    coverage=coverage,
+                    config=None,
+                    created_at=now,
+                    updated_at=now
+                )
+        except Exception as e:
+            logger.error(f"创建防御规则失败: {e}")
+        return None
+
+    @staticmethod
     def get_defense_types():
+
         """获取防御类型列表 - 使用标准安全防御类型"""
         try:
             # 返回标准的网络安全防御类型，基于开源安全工具的常见分类

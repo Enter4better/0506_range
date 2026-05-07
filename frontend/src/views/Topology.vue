@@ -32,7 +32,14 @@
           </el-icon>
           刷新
         </el-button>
+        <el-button type="warning" @click="exportTopology" :disabled="!selectedTargetId">
+          <el-icon>
+            <Download />
+          </el-icon>
+          导出拓扑
+        </el-button>
       </div>
+
     </el-card>
 
     <!-- 攻防态势卡片 -->
@@ -168,8 +175,11 @@
 
 <script setup>
 import { ref, onMounted, nextTick } from 'vue'
-import { Connection, Refresh, Loading } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
+import { Connection, Refresh, Loading, Download } from '@element-plus/icons-vue'
+
 import request from '../utils/request'
+
 
 const targets = ref([])
 const sessions = ref([])
@@ -385,10 +395,41 @@ function getNodeColor(type) {
   return nodeColors[type] || '#67c23a'
 }
 
+// 导出拓扑
+async function exportTopology() {
+  if (!selectedTargetId.value) return
+  try {
+    const params = { target_id: selectedTargetId.value, format: 'json' }
+    if (selectedSessionId.value) {
+      params.session_id = selectedSessionId.value
+    }
+    const response = await request.get('/topology/export', {
+      params,
+      responseType: 'blob'
+    })
+    const blob = new Blob([response.data], { type: 'application/json;charset=utf-8' })
+
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    const now = new Date()
+    const ts = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`
+    a.download = `topology_export_${ts}.json`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+    ElMessage.success('拓扑数据已导出')
+  } catch (e) {
+    ElMessage.error('导出失败: ' + (e.message || '未知错误'))
+  }
+}
+
 function onTargetChange() {
   selectedSessionId.value = ''
   loadTopology()
 }
+
 
 function onSessionChange() {
   loadTopology()
