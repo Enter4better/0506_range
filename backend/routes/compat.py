@@ -353,11 +353,11 @@ def compat_env_stats():
 def compat_attack_list():
     """获取攻击列表（兼容前端）"""
     try:
-        attacks = Attack.list_all()
+        attacks = Attack.list_all('1')
         
         return jsonify({
             'status': 'success',
-            'data': [a.to_dict() for a in attacks]
+            'attacks': [a.to_dict() for a in attacks]
         }), 200
     except Exception as e:
         current_app.logger.error(f"获取攻击列表失败: {e}")
@@ -373,20 +373,21 @@ def compat_attack_create():
         attack = Attack.create(
             name=data.get('name', '未命名攻击'),
             attack_type=data.get('attack_type', 'SQL注入'),
-            target_id=data.get('target_id'),
-            config=data.get('config', {}),
-            user_id=1
+            target=data.get('target', 'localhost'),
+            port=data.get('port', '80'),
+            intensity=data.get('intensity', 5),
+            user_id='1'
         )
         
         if not attack:
             return jsonify({'status': 'error', 'msg': '创建攻击失败'}), 500
         
         # 记录日志
-        Log.create('info', 'attack', f'创建攻击: {attack.name}', user_id=1)
+        Log.create('info', 'attack', f'创建攻击: {attack.name}', user_id='1')
         
         return jsonify({
             'status': 'success',
-            'data': attack.to_dict()
+            'attack': attack.to_dict()
         }), 201
     except Exception as e:
         current_app.logger.error(f"创建攻击失败: {e}")

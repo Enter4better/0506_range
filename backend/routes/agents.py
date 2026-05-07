@@ -78,44 +78,65 @@ def create_env_environment():
 
 @agents_bp.route('/attack/plan', methods=['POST'])
 def plan_attack():
-    """AI攻击规划"""
+    """AI攻击规划 - 真正调用AI生成多样化规划"""
     try:
         data = request.get_json()
         target = data.get('target', '')
+        port = data.get('port', '80')
+        description = data.get('description', '')
         attack_type = data.get('attack_type', '')
-        objective = data.get('objective', None)
         
         if not target:
             return jsonify({'status': 'error', 'msg': '请提供目标'}), 400
         
         agent = get_attack_agent()
         
-        session_id = data.get('session_id')
-        if session_id:
-            session_status = agent.get_session_status(session_id)
-            current_phase = session_status.get('current_phase', 1)
-            phase_name = agent.ATTACK_PHASES[current_phase]['name']
+        # 构建真正的AI提示词
+        target_info = f"{target}:{port}"
+        prompt = f"""你是一个专业的渗透测试专家。请对目标 {target_info} 进行安全测试规划。
+
+{'额外说明: ' + description if description else ''}
+
+请以JSON格式返回以下信息：
+{{
+  "target": "{target_info}",
+  "attack_type": "推荐的攻击类型（如：端口扫描、SQL注入、XSS、CSRF等）",
+  "steps": ["详细的攻击步骤1", "步骤2", "步骤3"],
+  "tools": ["推荐使用的工具列表"],
+  "estimated_success_rate": 0.0-1.0之间的数字,
+  "recommended_intensity": 1-10之间的推荐攻击强度,
+  "vulnerabilities": ["可能存在的漏洞列表"],
+  "message": "简短的规划说明"
+}}
+
+请返回纯粹的JSON，不要有其他解释文字。
+"""
+        
+        # 调用AI
+        try:
+            ai_response = agent.llm_client.generate(prompt, temperature=0.9)
             
-            plan = {
-                'target': target,
-                'attack_type': attack_type or '自动选择',
-                'current_phase': current_phase,
-                'phase_name': phase_name,
-                'recommended_attacks': agent.get_phase_attacks(current_phase),
-                'estimated_success_rate': 0.6,
-                'message': f'当前处于{phase_name}阶段，推荐使用针对性攻击'
-            }
-        else:
-            plan = {
-                'target': target,
-                'attack_type': attack_type or '端口扫描',
-                'steps': ['信息收集', '漏洞扫描', '漏洞利用'],
-                'tools': ['nmap', 'sqlmap'],
-                'estimated_success_rate': 0.6
-            }
+            # 尝试从响应中提取JSON
+            import json
+            import re
+            
+            json_match = re.search(r'\{[\s\S]*\}', ai_response)
+            if json_match:
+                plan = json.loads(json_match.group())
+            else:
+                # 如果AI没返回JSON，使用agent的分析能力
+                plan = agent.analyze_target(target_info)
+                
+        except Exception as ai_error:
+            current_app.logger.warning(f"AI调用失败，使用备用规划: {ai_error}")
+            # AI失败时的备用规划
+            plan = agent.analyze_target(target_info)
+        
+        Log.create('info', 'attack_agent', f'完成攻击规划: {target_info}', user_id=1)
         
         return jsonify({'status': 'success', 'plan': plan}), 200
     except Exception as e:
+        current_app.logger.error(f"规划攻击失败: {e}")
         return jsonify({'status': 'error', 'msg': str(e)}), 500
 
 

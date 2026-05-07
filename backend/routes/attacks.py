@@ -92,7 +92,6 @@ def _execute_attack_async(attack_id: str, attack: Attack):
 
 
 @attacks_bp.route('/types', methods=['GET'])
-@jwt_required()
 def get_attack_types():
     """获取攻击类型列表"""
     try:
@@ -103,11 +102,10 @@ def get_attack_types():
 
 
 @attacks_bp.route('/list', methods=['GET'])
-@jwt_required()
 def list_attacks():
     """获取攻击记录列表"""
     try:
-        user_id = get_jwt_identity()
+        user_id = '1'
         limit = int(request.args.get('limit', 50))
         attacks = Attack.list_all(user_id, limit)
         
@@ -124,10 +122,9 @@ def list_attacks():
 
 
 @attacks_bp.route('/create', methods=['POST'])
-@jwt_required()
 def create_attack():
     try:
-        user_id = get_jwt_identity()
+        user_id = '1'
         data = request.get_json()
         
         required_fields = ['name', 'attack_type', 'target', 'port', 'intensity']
@@ -158,17 +155,14 @@ def create_attack():
 
 
 @attacks_bp.route('/execute/<attack_id>', methods=['POST'])
-@jwt_required()
 def execute_attack(attack_id):
     """执行攻击"""
     try:
-        user_id = get_jwt_identity()
+        user_id = '1'
         attack = Attack.get_by_id(attack_id)
         
         if not attack:
             return jsonify({'status': 'error', 'msg': '攻击不存在'}), 404
-        if attack.user_id != user_id:
-            return jsonify({'status': 'error', 'msg': '权限不足'}), 403
         if attack.status != 'pending':
             return jsonify({'status': 'error', 'msg': '攻击任务状态不正确'}), 400
         
@@ -192,17 +186,13 @@ def execute_attack(attack_id):
 
 
 @attacks_bp.route('/result/<attack_id>', methods=['GET'])
-@jwt_required()
 def get_attack_result(attack_id):
     """获取攻击结果"""
     try:
-        user_id = get_jwt_identity()
         attack = Attack.get_by_id(attack_id)
         
         if not attack:
             return jsonify({'status': 'error', 'msg': '攻击不存在'}), 404
-        if attack.user_id != user_id:
-            return jsonify({'status': 'error', 'msg': '权限不足'}), 403
         
         result = attack_results.get(attack_id)
         return jsonify({
@@ -215,11 +205,10 @@ def get_attack_result(attack_id):
 
 
 @attacks_bp.route('/stats', methods=['GET'])
-@jwt_required()
 def get_attack_stats():
     """获取攻击统计"""
     try:
-        user_id = get_jwt_identity()
+        user_id = '1'
         stats = Attack.get_stats()
         user_attacks = Attack.list_all(user_id, 1000)
         

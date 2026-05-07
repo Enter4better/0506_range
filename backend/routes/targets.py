@@ -240,10 +240,9 @@ def create_target():
 
 
 @targets_bp.route('/start/<container_id>', methods=['POST'])
-@jwt_required()
 def start_target(container_id):
     try:
-        user_id = get_jwt_identity()
+        user_id = 1
         
         target = Target.get_by_id(container_id)
         if not target:
@@ -282,10 +281,9 @@ def start_target(container_id):
 
 
 @targets_bp.route('/stop/<container_id>', methods=['POST'])
-@jwt_required()
 def stop_target(container_id):
     try:
-        user_id = get_jwt_identity()
+        user_id = 1
         
         # 先获取目标记录
         target = Target.get_by_id(container_id)
@@ -326,10 +324,9 @@ def stop_target(container_id):
 
 
 @targets_bp.route('/delete/<container_id>', methods=['POST'])
-@jwt_required()
 def delete_target(container_id):
     try:
-        user_id = get_jwt_identity()
+        user_id = 1
         
         container = None
         target = None
@@ -375,10 +372,9 @@ def delete_target(container_id):
 
 
 @targets_bp.route('/clean', methods=['POST'])
-@jwt_required()
 def clean_targets():
     try:
-        user_id = get_jwt_identity()
+        user_id = 1
         docker_client = docker.from_env()
         count = 0
         failed = []

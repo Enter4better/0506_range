@@ -16,7 +16,6 @@ defenses_alt_bp = Blueprint('defenses_alt', __name__, url_prefix='/api/defenses'
 
 
 @defenses_bp.route('/list', methods=['GET'])
-@jwt_required()
 def list_defenses():
     """获取防御规则列表"""
     try:
@@ -48,14 +47,12 @@ def list_defenses():
 
 
 @defenses_bp.route('', methods=['GET'])
-@jwt_required()
 def list_defenses_alt():
     """获取防御规则列表（备用路由）"""
     return list_defenses()
 
 
 @defenses_bp.route('/stats', methods=['GET'])
-@jwt_required()
 def get_defense_stats():
     """获取防御统计"""
     try:
@@ -69,7 +66,6 @@ def get_defense_stats():
 
 
 @defenses_bp.route('/types', methods=['GET'])
-@jwt_required()
 def get_defense_types():
     """获取防御类型"""
     try:
@@ -83,14 +79,12 @@ def get_defense_types():
 
 
 @defenses_alt_bp.route('', methods=['GET'])
-@jwt_required()
 def alt_list_defenses():
     """兼容前端的防御列表"""
     return list_defenses()
 
 
 @defenses_bp.route('/create', methods=['POST'])
-@jwt_required()
 def create_defense():
     """创建新防御规则"""
     try:
@@ -126,7 +120,6 @@ def create_defense():
 
 
 @defenses_bp.route('/update/<defense_id>', methods=['PUT'])
-@jwt_required()
 def update_defense(defense_id):
     """更新防御规则"""
     try:
@@ -160,7 +153,6 @@ def update_defense(defense_id):
 
 
 @defenses_bp.route('/toggle/<defense_id>', methods=['POST'])
-@jwt_required()
 def toggle_defense(defense_id):
     """切换防御规则状态"""
     try:
@@ -188,7 +180,6 @@ def toggle_defense(defense_id):
 
 
 @defenses_bp.route('/delete/<defense_id>', methods=['DELETE'])
-@jwt_required()
 def delete_defense(defense_id):
     """删除防御规则"""
     try:
@@ -214,7 +205,6 @@ def delete_defense(defense_id):
 
 
 @defenses_bp.route('/check', methods=['POST'])
-@jwt_required()
 def check_defense():
     """检查防御规则"""
     try:
