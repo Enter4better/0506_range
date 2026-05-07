@@ -195,7 +195,7 @@
 import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Setting, Plus, Refresh, Delete, Monitor, CircleCheck, Warning, DataLine, Box, Loading } from '@element-plus/icons-vue'
-import axios from 'axios'
+import request from '../utils/request'
 
 const targets = ref([])
 const loading = ref(true)
@@ -213,9 +213,17 @@ let refreshInterval = null
 // 获取靶场列表
 async function fetchTargets() {
   try {
-    const res = await axios.get('/api/env/list')
+    const res = await request.get('/api/env/list')
     if (res.data.status === 'success') {
       targets.value = res.data.containers || res.data.data || []
+      // 格式化数据，确保所有字段都正确显示
+      targets.value = targets.value.map(t => ({
+        ...t,
+        name: t.name || '未命名靶场',
+        image: t.image || t.os || 'unknown',
+        ports: t.ports || t.port || '-',
+        created: t.created || t.created_at || '-'
+      }))
       updateStats()
     }
   } catch (err) {
@@ -252,7 +260,7 @@ async function createTarget() {
 
     console.log('发送创建请求:', postData)
 
-    const res = await axios.post('/api/env/create', postData)
+    const res = await request.post('/api/env/create', postData)
 
     if (res.data.status === 'success') {
       ElMessage.success(`靶场创建成功: ${res.data.name || createForm.image}`)
@@ -277,7 +285,7 @@ async function createTarget() {
 async function startTarget(target) {
   try {
     const id = target.id || target.target_id || target.name
-    const res = await axios.post(`/api/env/start/${id}`)
+    const res = await request.post(`/api/env/start/${id}`)
     if (res.data.status === 'success') {
       ElMessage.success(`靶场已启动: ${target.name}`)
       await fetchTargets()
@@ -293,7 +301,7 @@ async function startTarget(target) {
 async function stopTarget(target) {
   try {
     const id = target.id || target.target_id || target.name
-    const res = await axios.post(`/api/env/stop/${id}`)
+    const res = await request.post(`/api/env/stop/${id}`)
     if (res.data.status === 'success') {
       ElMessage.success(`靶场已停止: ${target.name}`)
       await fetchTargets()
@@ -313,7 +321,7 @@ async function deleteTarget(target) {
     })
 
     const id = target.id || target.target_id || target.name
-    const res = await axios.post(`/api/env/delete/${id}`)
+    const res = await request.post(`/api/env/delete/${id}`)
     if (res.data.status === 'success') {
       ElMessage.success(`靶场已删除: ${target.name}`)
       await fetchTargets()
@@ -334,7 +342,7 @@ async function cleanAllTargets() {
       type: 'warning'
     })
 
-    const res = await axios.post('/api/env/clean')
+    const res = await request.post('/api/env/clean')
     if (res.data.status === 'success') {
       ElMessage.success(`已清理 ${res.data.cleaned} 个靶场`)
       await fetchTargets()

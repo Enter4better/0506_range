@@ -12,43 +12,46 @@ topology_bp = Blueprint('topology', __name__, url_prefix='/api/topology')
 
 
 @topology_bp.route('', methods=['GET'])
-@jwt_required()
 def get_topology():
     """获取动态拓扑 - 显示攻击阶段和防御等级"""
-    target_id = request.args.get('target_id')
-    session_id = request.args.get('session_id')  # 可选，用于显示攻击状态
-    
-    if not target_id:
-        # 返回所有靶场列表供选择
-        targets = Target.list_all()
+    try:
+        target_id = request.args.get('target_id')
+        session_id = request.args.get('session_id')  # 可选，用于显示攻击状态
+        
+        if not target_id:
+            # 返回所有靶场列表供选择
+            targets = Target.list_all()
+            return jsonify({
+                'status': 'success',
+                'targets': [{'id': t.target_id, 'name': t.name, 'os': t.os} for t in targets],
+                'message': '请选择要查看拓扑的靶场'
+            }), 200
+        
+        # 获取靶场信息
+        target = Target.get_by_id(target_id)
+        if not target:
+            return jsonify({'status': 'error', 'msg': '靶场不存在'}), 404
+        
+        # 获取攻击和防御状态
+        attack_agent = get_attack_agent()
+        defense_agent = get_defense_agent()
+        
+        attack_status = attack_agent.get_session_status(session_id) if session_id else {'current_phase': 1, 'phase_name': '未开始', 'successes': 0}
+        defense_status = defense_agent.get_status(session_id) if session_id else {'current_level': 1, 'level_name': '监控级', 'blocked_ips': []}
+        
+        # 生成动态拓扑
+        topology = _generate_dynamic_topology(target, attack_status, defense_status)
+        
         return jsonify({
             'status': 'success',
-            'targets': [{'id': t.target_id, 'name': t.name, 'os': t.os} for t in targets],
-            'message': '请选择要查看拓扑的靶场'
+            'target': {'id': target.target_id, 'name': target.name},
+            'attack_status': attack_status,
+            'defense_status': defense_status,
+            'topology': topology
         }), 200
-    
-    # 获取靶场信息
-    target = Target.get_by_id(target_id)
-    if not target:
-        return jsonify({'status': 'error', 'msg': '靶场不存在'}), 404
-    
-    # 获取攻击和防御状态
-    attack_agent = get_attack_agent()
-    defense_agent = get_defense_agent()
-    
-    attack_status = attack_agent.get_session_status(session_id) if session_id else {'current_phase': 1, 'phase_name': '未开始'}
-    defense_status = defense_agent.get_status(session_id) if session_id else {'current_level': 1, 'level_name': '监控级'}
-    
-    # 生成动态拓扑
-    topology = _generate_dynamic_topology(target, attack_status, defense_status)
-    
-    return jsonify({
-        'status': 'success',
-        'target': {'id': target.target_id, 'name': target.name},
-        'attack_status': attack_status,
-        'defense_status': defense_status,
-        'topology': topology
-    }), 200
+    except Exception as e:
+        current_app.logger.error(f"获取拓扑失败: {e}")
+        return jsonify({'status': 'error', 'msg': str(e)}), 500
 
 
 def _generate_dynamic_topology(target, attack_status, defense_status):

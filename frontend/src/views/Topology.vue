@@ -18,11 +18,13 @@
           <el-option v-for="target in targets" :key="target.id" :label="target.name" :value="target.id" />
         </el-select>
 
-        <el-select v-model="selectedSessionId" placeholder="选择演练会话" filterable style="width: 250px"
-          @change="onSessionChange">
-          <el-option v-for="session in sessions" :key="session.session_id" :label="session.session_id"
-            :value="session.session_id" />
-        </el-select>
+        <el-tooltip content="演练会话是一次完整的攻防演练，包含从开始到结束的所有攻击和防御记录" placement="top">
+          <el-select v-model="selectedSessionId" placeholder="选择演练会话" filterable style="width: 250px"
+            @change="onSessionChange">
+            <el-option v-for="session in sessions" :key="session.session_id" :label="session.session_id"
+              :value="session.session_id" />
+          </el-select>
+        </el-tooltip>
 
         <el-button type="primary" @click="loadTopology" :loading="loading">
           <el-icon>
@@ -128,7 +130,7 @@
 <script setup>
 import { ref, onMounted, nextTick } from 'vue'
 import { Connection, Refresh, Loading } from '@element-plus/icons-vue'
-import axios from 'axios'
+import request from '../utils/request'
 
 const targets = ref([])
 const sessions = ref([])
@@ -168,7 +170,7 @@ const nodeLabels = {
 
 async function loadTargets() {
   try {
-    const res = await axios.get('/api/topology')
+    const res = await request.get('/api/topology')
     if (res.data.status === 'success') {
       targets.value = res.data.targets || []
     }
@@ -179,7 +181,7 @@ async function loadTargets() {
 
 async function loadSessions() {
   try {
-    const res = await axios.get('/api/agents/sessions')
+    const res = await request.get('/api/agents/sessions')
     if (res.data.status === 'success') {
       sessions.value = res.data.sessions || []
     }
@@ -200,7 +202,7 @@ async function loadTopology() {
       params.session_id = selectedSessionId.value
     }
 
-    const res = await axios.get('/api/topology', { params })
+    const res = await request.get('/api/topology', { params })
 
     if (res.data.status === 'success') {
       selectedTarget.value = res.data.target
