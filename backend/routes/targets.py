@@ -28,6 +28,8 @@ def sanitize_container_name(name: str) -> str:
     if not name:
         name = 'container'
     name = unquote(name)
+    # 先替换冒号为下划线（Docker不允许冒号）
+    name = name.replace(':', '_')
     cleaned = re.sub(r'[^a-zA-Z0-9_.-]', '_', name)
     cleaned = re.sub(r'_+', '_', cleaned)
     cleaned = cleaned.strip('_')
@@ -154,14 +156,15 @@ def create_target():
         
         # 生成容器名称和显示名称
         if custom_name:
-            import re
-            clean_name = re.sub(r'[^a-zA-Z0-9]', '_', custom_name)
+            clean_name = sanitize_container_name(custom_name)
             container_name = f'{DOCKER_CONFIG["container_prefix"]}{clean_name}_{ts}'
             display_name = custom_name
         else:
-            # 从镜像名提取显示名称
+            # 从镜像名提取显示名称（去掉标签部分如 :latest）
             base_name = original_image.split(':')[0].replace('/', '_')
-            container_name = f'{DOCKER_CONFIG["container_prefix"]}{base_name}_{ts}'
+            # 进一步清理，确保符合Docker命名规则
+            clean_base = sanitize_container_name(base_name)
+            container_name = f'{DOCKER_CONFIG["container_prefix"]}{clean_base}_{ts}'
             display_name = f'{base_name}靶场'
         
         current_app.logger.info(f"原始镜像: {original_image}")
@@ -239,6 +242,41 @@ def create_target():
         return jsonify({'status': 'error', 'msg': f'创建靶场失败: {str(e)}'}), 500
 
 
+def _get_container_name(target):
+    """从数据库记录中获取真实的Docker容器名称"""
+    if not target:
+        return None
+    # 优先从config中获取container_name（创建时保存的真实Docker容器名）
+    if target.config:
+        try:
+            config = json.loads(target.config) if isinstance(target.config, str) else target.config
+            container_name = config.get('container_name')
+            if container_name:
+                return container_name
+        except:
+            pass
+    # 回退：使用target.name（可能是显示名称，不一定匹配Docker容器名）
+    return target.name
+
+
+def _find_container(container_name):
+    """根据名称查找Docker容器"""
+    if not container_name:
+        return None
+    try:
+        docker_client = docker.from_env()
+        try:
+            return docker_client.containers.get(container_name)
+        except:
+            # 尝试通过名称前缀查找
+            containers = docker_client.containers.list(all=True, filters={'name': container_name})
+            if containers:
+                return containers[0]
+    except:
+        pass
+    return None
+
+
 @targets_bp.route('/start/<container_id>', methods=['POST'])
 def start_target(container_id):
     try:
@@ -255,16 +293,17 @@ def start_target(container_id):
         if not target:
             return jsonify({'status': 'error', 'msg': '靶场不存在'}), 404
         
-        # 启动 Docker 容器
-        try:
-            docker_client = docker.from_env()
-            container = docker_client.containers.get(target.name)
-            container.start()
-            current_app.logger.info(f"Docker容器已启动: {target.name}")
-        except docker.errors.NotFound:
-            current_app.logger.warning(f"容器不存在: {target.name}")
-        except Exception as e:
-            current_app.logger.error(f"Docker启动失败: {e}")
+        # 获取真实Docker容器名并启动
+        real_name = _get_container_name(target)
+        container = _find_container(real_name)
+        if container:
+            try:
+                container.start()
+                current_app.logger.info(f"Docker容器已启动: {container.name}")
+            except Exception as e:
+                current_app.logger.error(f"Docker启动失败: {e}")
+        else:
+            current_app.logger.warning(f"容器不存在: {real_name}")
         
         # 更新数据库状态
         target.status = 'running'
@@ -298,16 +337,17 @@ def stop_target(container_id):
         if not target:
             return jsonify({'status': 'error', 'msg': '靶场不存在'}), 404
         
-        # 停止 Docker 容器
-        try:
-            docker_client = docker.from_env()
-            container = docker_client.containers.get(target.name)
-            container.stop(timeout=10)
-            current_app.logger.info(f"Docker容器已停止: {target.name}")
-        except docker.errors.NotFound:
-            current_app.logger.warning(f"容器不存在: {target.name}")
-        except Exception as e:
-            current_app.logger.error(f"Docker停止失败: {e}")
+        # 获取真实Docker容器名并停止
+        real_name = _get_container_name(target)
+        container = _find_container(real_name)
+        if container:
+            try:
+                container.stop(timeout=10)
+                current_app.logger.info(f"Docker容器已停止: {container.name}")
+            except Exception as e:
+                current_app.logger.error(f"Docker停止失败: {e}")
+        else:
+            current_app.logger.warning(f"容器不存在: {real_name}")
         
         # 更新数据库状态
         target.status = 'stopped'
@@ -331,22 +371,58 @@ def delete_target(container_id):
         container = None
         target = None
         
-        try:
-            docker_client = docker.from_env()
-            container = docker_client.containers.get(container_id)
-        except:
+        # 1. 先查找数据库记录（支持 target_id 数字ID 或 name）
+        target = Target.get_by_id(container_id)
+        if not target:
+            target = Target.get_by_name(container_id)
+        if not target:
+            # 尝试通过名称模糊匹配
+            all_targets = Target.list_all()
+            for t in all_targets:
+                if t.name == container_id or str(t.target_id) == container_id:
+                    target = t
+                    break
+        
+        # 2. 从数据库记录中获取容器名称，查找并删除Docker容器
+        container_name = None
+        if target:
+            # 优先从config中获取container_name
+            if target.config:
+                try:
+                    config = json.loads(target.config) if isinstance(target.config, str) else target.config
+                    container_name = config.get('container_name')
+                except:
+                    pass
+            if not container_name:
+                container_name = target.name
+        
+        if container_name:
             try:
                 docker_client = docker.from_env()
-                containers = docker_client.containers.list(all=True, filters={'name': container_id})
-                if containers:
-                    container = containers[0]
+                try:
+                    container = docker_client.containers.get(container_name)
+                except:
+                    # 尝试通过名称前缀查找
+                    containers = docker_client.containers.list(all=True, filters={'name': container_name})
+                    if containers:
+                        container = containers[0]
             except:
                 pass
         
-        target = Target.get_by_name(container_id)
-        if not target and container:
-            target = Target.get_by_name(container.name)
+        # 3. 如果上面没找到，尝试直接用 container_id 查找容器
+        if not container:
+            try:
+                docker_client = docker.from_env()
+                try:
+                    container = docker_client.containers.get(container_id)
+                except:
+                    containers = docker_client.containers.list(all=True, filters={'name': container_id})
+                    if containers:
+                        container = containers[0]
+            except:
+                pass
         
+        # 4. 删除Docker容器（强制删除，包括运行中的）
         if container:
             try:
                 container.stop(timeout=5)
@@ -358,6 +434,7 @@ def delete_target(container_id):
             except Exception as e:
                 current_app.logger.error(f"删除容器失败: {e}")
         
+        # 5. 删除数据库记录
         if target:
             target.delete()
             current_app.logger.info(f"数据库记录已删除: {target.name}")

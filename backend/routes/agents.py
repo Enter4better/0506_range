@@ -85,12 +85,12 @@ def plan_attack():
         port = data.get('port', '80')
         description = data.get('description', '')
         attack_type = data.get('attack_type', '')
-        
+
         if not target:
             return jsonify({'status': 'error', 'msg': '请提供目标'}), 400
-        
+
         agent = get_attack_agent()
-        
+
         # 构建真正的AI提示词
         target_info = f"{target}:{port}"
         prompt = f"""你是一个专业的渗透测试专家。请对目标 {target_info} 进行安全测试规划。
@@ -111,29 +111,28 @@ def plan_attack():
 
 请返回纯粹的JSON，不要有其他解释文字。
 """
-        
+
         # 调用AI
         try:
             ai_response = agent.llm_client.generate(prompt, temperature=0.9)
-            
+
             # 尝试从响应中提取JSON
-            import json
             import re
-            
+
             json_match = re.search(r'\{[\s\S]*\}', ai_response)
             if json_match:
                 plan = json.loads(json_match.group())
             else:
                 # 如果AI没返回JSON，使用agent的分析能力
                 plan = agent.analyze_target(target_info)
-                
+
         except Exception as ai_error:
             current_app.logger.warning(f"AI调用失败，使用备用规划: {ai_error}")
             # AI失败时的备用规划
             plan = agent.analyze_target(target_info)
-        
+
         Log.create('info', 'attack_agent', f'完成攻击规划: {target_info}', user_id=1)
-        
+
         return jsonify({'status': 'success', 'plan': plan}), 200
     except Exception as e:
         current_app.logger.error(f"规划攻击失败: {e}")
@@ -160,10 +159,10 @@ def execute_session_attack(session_id):
         data = request.get_json()
         attack_type = data.get('attack_type')
         intensity = data.get('intensity', 5)
-        
+
         agent = get_attack_agent()
         result = agent.execute_attack(session_id, attack_type, intensity)
-        
+
         return jsonify({'status': 'success', 'result': result}), 200
     except Exception as e:
         return jsonify({'status': 'error', 'msg': str(e)}), 500
@@ -184,12 +183,36 @@ def get_session_attack_status(session_id):
 
 @agents_bp.route('/defense/status', methods=['GET'])
 def get_defense_status():
-    """获取防御状态"""
+    """获取防御状态 - 包含检测攻击总数、活跃封禁等"""
     try:
         session_id = request.args.get('session_id')
         agent = get_defense_agent()
         status = agent.get_status(session_id)
-        return jsonify({'status': 'success', 'data': status}), 200
+
+        # 计算检测攻击总数（从防御日志中统计）
+        all_logs = agent.get_defense_logs(1000)
+        total_attacks = len(all_logs)
+
+        # 构建活跃封禁列表
+        active_blocks = {}
+        if session_id and session_id in agent.session_defense:
+            session = agent.session_defense[session_id]
+            blocked_ips = session.get('blocked_ips', [])
+            if blocked_ips:
+                active_blocks['ip_blocks'] = {
+                    'level': session.get('level', 1),
+                    'ips': blocked_ips
+                }
+
+        return jsonify({
+            'status': 'success',
+            'data': {
+                **status,
+                'total_attacks': total_attacks,
+                'defense_logs_count': len(all_logs),
+                'active_blocks': active_blocks
+            }
+        }), 200
     except Exception as e:
         return jsonify({'status': 'error', 'msg': str(e)}), 500
 

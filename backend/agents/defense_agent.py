@@ -36,8 +36,44 @@ class DefenseAgent(BaseAgent):
     
     def __init__(self):
         super().__init__()
-        self.session_defense = {}  # {session_id: {'level': 1, 'blocked_ips': []}}
+        self.session_defense = {}  # {session_id: {'level': 1, 'blocked_ips': [], 'coverage': 50}}
         self.defense_logs = []
+    
+    @staticmethod
+    def calculate_defense_intercept_rate(attack_phase: int, intensity: int, defense_level: int, coverage: float = 50.0) -> float:
+        """
+        防御拦截率 = 防御等级因子 × 覆盖率因子 × 阶段因子
+        
+        参数说明：
+        - attack_phase: 1-6，攻击阶段
+        - intensity: 1-10，攻击强度
+        - defense_level: 0-5，防御等级
+        - coverage: 0-100，防御覆盖率
+        """
+        # 1. 防御等级因子（0 ~ 0.6）
+        level_factor = defense_level / 8
+        
+        # 2. 覆盖率因子（0 ~ 0.3）
+        coverage_factor = coverage / 100 * 0.35
+        
+        # 3. 阶段因子（攻击越深越难拦截）
+        phase_factor = {
+            1: 0.95,   # 信息收集 - 易拦截
+            2: 0.90,   # 漏洞探测
+            3: 0.70,   # 漏洞利用
+            4: 0.50,   # 权限维持
+            5: 0.35,   # 横向移动
+            6: 0.20    # 痕迹清理 - 难拦截
+        }.get(attack_phase, 0.70)
+        
+        # 4. 强度负面影响（强度越高越难拦截）
+        intensity_penalty = 1.0 - (intensity / 10) * 0.15
+        
+        # 5. 最终拦截率
+        intercept_rate = (level_factor + coverage_factor) * phase_factor * intensity_penalty
+        intercept_rate = min(0.95, max(0.05, intercept_rate))  # 限制在 5% ~ 95%
+        
+        return round(intercept_rate, 3)
     
     def detect_and_respond(self, session_id: str, attack_data: Dict) -> Dict:
         """检测并响应攻击（根据攻击阶段调整防御等级）"""
@@ -51,7 +87,8 @@ class DefenseAgent(BaseAgent):
             self.session_defense[session_id] = {
                 'level': 1,
                 'blocked_ips': [],
-                'alert_history': []
+                'alert_history': [],
+                'coverage': 50
             }
         
         session = self.session_defense[session_id]
@@ -71,6 +108,10 @@ class DefenseAgent(BaseAgent):
         
         current_level = session['level']
         
+        # 计算防御拦截率
+        coverage = session.get('coverage', 50)
+        intercept_rate = self.calculate_defense_intercept_rate(attack_phase, intensity, current_level, coverage)
+        
         # 执行防御动作
         actions = self._execute_defense_actions(
             attack_type=attack_type,
@@ -86,6 +127,7 @@ class DefenseAgent(BaseAgent):
             'attack_phase': attack_phase,
             'defense_level': current_level,
             'level_name': self.DEFENSE_LEVELS[current_level]['name'],
+            'intercept_rate': intercept_rate,
             'actions': actions,
             'source_ip': source_ip,
             'session_id': session_id
@@ -98,6 +140,7 @@ class DefenseAgent(BaseAgent):
             'attack_phase': attack_phase,
             'defense_level': current_level,
             'level_name': self.DEFENSE_LEVELS[current_level]['name'],
+            'intercept_rate': intercept_rate,
             'actions_taken': actions,
             'blocked_ips': session['blocked_ips'],
             'responded_at': datetime.now().isoformat()

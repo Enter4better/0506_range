@@ -124,6 +124,45 @@
         <p class="sub-text">拓扑将显示攻击阶段和防御等级的变化</p>
       </div>
     </el-card>
+
+    <!-- 节点详情弹窗 -->
+    <el-dialog v-model="nodeDialogVisible" :title="nodeDetail?.name || '节点详情'" width="500px" class="tech-dialog">
+      <div v-if="nodeDetail" class="node-detail-content">
+        <div class="detail-row">
+          <span class="detail-label">节点名称</span>
+          <span class="detail-value">{{ nodeDetail.name }}</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">节点类型</span>
+          <el-tag size="small" :color="getNodeColor(nodeDetail.type)">{{ nodeLabels[nodeDetail.type] || nodeDetail.type
+          }}</el-tag>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">IP 地址</span>
+          <span class="detail-value mono">{{ nodeDetail.ip || 'N/A' }}</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">端口</span>
+          <span class="detail-value mono">{{ nodeDetail.port || 'N/A' }}</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">威胁等级</span>
+          <el-tag v-if="nodeDetail.threat === 'critical'" type="danger" size="small">严重威胁</el-tag>
+          <el-tag v-else-if="nodeDetail.threat === 'high'" type="warning" size="small">高危</el-tag>
+          <el-tag v-else-if="nodeDetail.threat === 'medium'" type="warning" size="small">中危</el-tag>
+          <el-tag v-else type="info" size="small">正常</el-tag>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">防御状态</span>
+          <el-tag v-if="nodeDetail.defense === 'active'" type="success" size="small">已激活</el-tag>
+          <el-tag v-else type="info" size="small">待命中</el-tag>
+        </div>
+        <div class="detail-row" v-if="nodeDetail.is_attacker">
+          <span class="detail-label">攻击源</span>
+          <el-tag type="danger" size="small">⚠ 攻击源</el-tag>
+        </div>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -142,6 +181,8 @@ const defenseStatus = ref(null)
 const topology = ref({ nodes: [], edges: [] })
 const loading = ref(false)
 const topoRef = ref(null)
+const nodeDialogVisible = ref(false)
+const nodeDetail = ref(null)
 
 // 节点颜色
 const nodeColors = {
@@ -170,9 +211,9 @@ const nodeLabels = {
 
 async function loadTargets() {
   try {
-    const res = await request.get('/api/topology')
-    if (res.data.status === 'success') {
-      targets.value = res.data.targets || []
+    const res = await request.get('/topology')
+    if (res.status === 'success') {
+      targets.value = res.targets || []
     }
   } catch (e) {
     console.error('加载靶场列表失败', e)
@@ -181,14 +222,15 @@ async function loadTargets() {
 
 async function loadSessions() {
   try {
-    const res = await request.get('/api/agents/sessions')
-    if (res.data.status === 'success') {
-      sessions.value = res.data.sessions || []
+    const res = await request.get('/attack/sessions')
+    if (res.status === 'success') {
+      sessions.value = res.sessions || []
     }
   } catch (e) {
     console.error('加载会话列表失败', e)
   }
 }
+
 
 async function loadTopology() {
   if (!selectedTargetId.value) {
@@ -202,13 +244,13 @@ async function loadTopology() {
       params.session_id = selectedSessionId.value
     }
 
-    const res = await request.get('/api/topology', { params })
+    const res = await request.get('/topology', { params })
 
-    if (res.data.status === 'success') {
-      selectedTarget.value = res.data.target
-      attackStatus.value = res.data.attack_status
-      defenseStatus.value = res.data.defense_status
-      topology.value = res.data.topology || { nodes: [], edges: [] }
+    if (res.status === 'success') {
+      selectedTarget.value = res.target
+      attackStatus.value = res.attack_status
+      defenseStatus.value = res.defense_status
+      topology.value = res.topology || { nodes: [], edges: [] }
       await nextTick()
       drawTopology()
     }
@@ -335,14 +377,12 @@ function drawTopology() {
 }
 
 function showNodeDetail(node) {
-  alert(`
-    ${node.name}
-    类型: ${nodeLabels[node.type] || node.type}
-    IP: ${node.ip || 'N/A'}
-    端口: ${node.port || 'N/A'}
-    威胁等级: ${node.threat || '正常'}
-    防御状态: ${node.defense || '监控中'}
-  `)
+  nodeDetail.value = node
+  nodeDialogVisible.value = true
+}
+
+function getNodeColor(type) {
+  return nodeColors[type] || '#67c23a'
 }
 
 function onTargetChange() {
@@ -494,5 +534,39 @@ onMounted(() => {
 .sub-text {
   font-size: 12px;
   margin-top: 4px;
+}
+
+/* 节点详情弹窗样式 */
+.node-detail-content {
+  padding: 8px 0;
+}
+
+.detail-row {
+  display: flex;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.detail-row:last-child {
+  border-bottom: none;
+}
+
+.detail-label {
+  width: 100px;
+  font-size: 13px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.detail-value {
+  font-size: 14px;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.detail-value.mono {
+  font-family: var(--font-mono);
+  color: var(--cyan);
 }
 </style>

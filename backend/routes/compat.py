@@ -72,12 +72,43 @@ def compat_env_list():
         return jsonify({'status': 'error', 'msg': '获取环境列表失败'}), 500
 
 
+def sanitize_container_name(name: str) -> str:
+    """清理容器名称，符合Docker命名规则 [a-zA-Z0-9][a-zA-Z0-9_.-]"""
+    if not name:
+        name = 'container'
+    import re
+    # 替换冒号为下划线（Docker不允许冒号）
+    name = name.replace(':', '_')
+    cleaned = re.sub(r'[^a-zA-Z0-9_.-]', '_', name)
+    cleaned = re.sub(r'_+', '_', cleaned)
+    cleaned = cleaned.strip('_')
+    if cleaned and cleaned[0].isdigit():
+        cleaned = 'c_' + cleaned
+    if len(cleaned) > 60:
+        cleaned = cleaned[:60]
+    if not cleaned:
+        cleaned = 'container'
+    return cleaned
+
+
 def _create_container_direct(data):
     """直接创建Docker容器"""
     try:
         image = data.get('image', 'nginx')
         port = data.get('port', '8080:80')
-        name = data.get('name', f'target_{image}_{datetime.now().strftime("%H%M%S")}')
+        custom_name = data.get('name', '')
+        
+        ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+        
+        # 生成容器名称（必须符合Docker命名规则）
+        if custom_name:
+            clean_name = sanitize_container_name(custom_name)
+            name = f'target_{clean_name}_{ts}'
+        else:
+            # 从镜像名提取基础名称
+            base_name = image.split(':')[0].replace('/', '_')
+            clean_base = sanitize_container_name(base_name)
+            name = f'target_{clean_base}_{ts}'
         
         # 解析端口
         container_port = 80
@@ -255,6 +286,38 @@ def compat_env_delete(target_id):
         return jsonify({'status': 'error', 'msg': '删除环境失败'}), 500
 
 
+def _get_container_name(target):
+    """从数据库记录中获取真实的Docker容器名称"""
+    if not target:
+        return None
+    if target.config:
+        try:
+            config = json.loads(target.config) if isinstance(target.config, str) else target.config
+            container_name = config.get('container_name')
+            if container_name:
+                return container_name
+        except:
+            pass
+    return target.name
+
+
+def _find_container(container_name):
+    """根据名称查找Docker容器"""
+    if not container_name:
+        return None
+    try:
+        docker_client = docker.from_env()
+        try:
+            return docker_client.containers.get(container_name)
+        except:
+            containers = docker_client.containers.list(all=True, filters={'name': container_name})
+            if containers:
+                return containers[0]
+    except:
+        pass
+    return None
+
+
 @compat_bp.route('/env/start/<target_id>', methods=['POST'])
 def compat_env_start(target_id):
     """启动环境（兼容前端）"""
@@ -264,19 +327,51 @@ def compat_env_start(target_id):
         if not target:
             return jsonify({'status': 'error', 'msg': '环境不存在'}), 404
         
-        # 尝试启动Docker容器
-        try:
-            docker_client = docker.from_env()
-            if target.name:
-                container = docker_client.containers.get(target.name)
+        # 获取真实Docker容器名并启动
+        real_name = _get_container_name(target)
+        container = _find_container(real_name)
+        if container:
+            try:
                 container.start()
-        except Exception as e:
-            current_app.logger.warning(f"启动容器失败: {e}")
+                current_app.logger.info(f"Docker容器已启动: {container.name}")
+            except Exception as e:
+                current_app.logger.error(f"Docker启动失败: {e}")
+                return jsonify({'status': 'error', 'msg': f'Docker容器启动失败: {str(e)}'}), 500
+        else:
+            current_app.logger.warning(f"容器不存在: {real_name}")
+            # 尝试从配置中重新创建容器
+            try:
+                if target.config:
+                    config = json.loads(target.config) if isinstance(target.config, str) else target.config
+                    image = config.get('image', 'nginx')
+                    host_port = config.get('host_port', 8080)
+                    container_port = config.get('container_port', 80)
+                    
+                    docker_client = docker.from_env()
+                    port_bindings = {f'{container_port}/tcp': ('127.0.0.1', host_port)}
+                    
+                    new_container = docker_client.containers.run(
+                        image,
+                        name=real_name,
+                        detach=True,
+                        ports=port_bindings,
+                        remove=False
+                    )
+                    current_app.logger.info(f"容器已重新创建: {new_container.name}")
+                    
+                    # 更新config中的container_id
+                    config['container_id'] = new_container.id
+                    target.config = json.dumps(config)
+                    target.save()
+                else:
+                    return jsonify({'status': 'error', 'msg': '容器不存在且无法重新创建（缺少配置信息）'}), 500
+            except Exception as recreate_error:
+                current_app.logger.error(f"重新创建容器失败: {recreate_error}")
+                return jsonify({'status': 'error', 'msg': f'容器不存在，重新创建失败: {str(recreate_error)}'}), 500
         
-        success = target.update(status='running')
-        
-        if not success:
-            return jsonify({'status': 'error', 'msg': '启动环境失败'}), 500
+        # 更新数据库状态
+        target.status = 'running'
+        target.save()
         
         # 记录日志
         Log.create('success', 'target', f'启动环境: {target.name}', user_id=1)
@@ -299,14 +394,17 @@ def compat_env_stop(target_id):
         if not target:
             return jsonify({'status': 'error', 'msg': '环境不存在'}), 404
         
-        # 尝试停止Docker容器
-        try:
-            docker_client = docker.from_env()
-            if target.name:
-                container = docker_client.containers.get(target.name)
+        # 获取真实Docker容器名并停止
+        real_name = _get_container_name(target)
+        container = _find_container(real_name)
+        if container:
+            try:
                 container.stop(timeout=10)
-        except Exception as e:
-            current_app.logger.warning(f"停止容器失败: {e}")
+                current_app.logger.info(f"Docker容器已停止: {container.name}")
+            except Exception as e:
+                current_app.logger.error(f"Docker停止失败: {e}")
+        else:
+            current_app.logger.warning(f"容器不存在: {real_name}")
         
         success = target.update(status='stopped')
         

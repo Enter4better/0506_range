@@ -2,7 +2,9 @@
   <div class="page-container">
     <div class="page-header">
       <h2 class="page-title">
-        <el-icon><Document /></el-icon>
+        <el-icon>
+          <Document />
+        </el-icon>
         攻防演练日志
       </h2>
       <p class="page-desc">AI智能体自动生成的攻防演练实时日志</p>
@@ -13,7 +15,9 @@
       <el-col :xs="24" :sm="8">
         <div class="agent-card env-card">
           <div class="agent-icon">
-            <el-icon><Monitor /></el-icon>
+            <el-icon>
+              <Monitor />
+            </el-icon>
           </div>
           <div class="agent-info">
             <div class="agent-name">环境管理Agent</div>
@@ -27,7 +31,9 @@
       <el-col :xs="24" :sm="8">
         <div class="agent-card attack-card">
           <div class="agent-icon">
-            <el-icon><Warning /></el-icon>
+            <el-icon>
+              <Warning />
+            </el-icon>
           </div>
           <div class="agent-info">
             <div class="agent-name">模拟攻击Agent</div>
@@ -41,7 +47,9 @@
       <el-col :xs="24" :sm="8">
         <div class="agent-card defense-card">
           <div class="agent-icon">
-            <el-icon><CircleCheck /></el-icon>
+            <el-icon>
+              <CircleCheck />
+            </el-icon>
           </div>
           <div class="agent-info">
             <div class="agent-name">模拟防御Agent</div>
@@ -59,7 +67,9 @@
       <template #header>
         <div class="card-header">
           <span class="card-title">
-            <el-icon><DataLine /></el-icon>
+            <el-icon>
+              <DataLine />
+            </el-icon>
             实时日志流
           </span>
           <div class="header-actions">
@@ -88,20 +98,19 @@
 
       <div ref="logContainer" class="log-container">
         <div v-if="loading && logs.length === 0" class="empty-state">
-          <el-icon class="loading-icon"><Loading /></el-icon>
+          <el-icon class="loading-icon">
+            <Loading />
+          </el-icon>
           <p>加载日志中...</p>
         </div>
         <div v-else-if="filteredLogs.length === 0" class="empty-state">
-          <el-icon><Document /></el-icon>
+          <el-icon>
+            <Document />
+          </el-icon>
           <p>暂无日志，启动攻防演练后将自动生成</p>
         </div>
         <div v-else class="log-list">
-          <div
-            v-for="(log, i) in filteredLogs"
-            :key="log.id || i"
-            class="log-row"
-            :class="'log-level-' + log.level"
-          >
+          <div v-for="(log, i) in filteredLogs" :key="log.id || i" class="log-row" :class="'log-level-' + log.level">
             <span class="log-time">{{ log.time }}</span>
             <el-tag :type="getLevelType(log.level)" size="small" effect="dark" class="log-tag">
               {{ log.levelText }}
@@ -115,16 +124,8 @@
       </div>
 
       <div class="pagination-wrapper" v-if="totalLogs > pageSize">
-        <el-pagination
-          v-model:current-page="currentPage"
-          v-model:page-size="pageSize"
-          :page-sizes="[50, 100, 200]"
-          :total="totalLogs"
-          layout="total, prev, pager, next"
-          small
-          background
-          @change="loadLogs"
-        />
+        <el-pagination v-model:current-page="currentPage" v-model:page-size="pageSize" :page-sizes="[50, 100, 200]"
+          :total="totalLogs" layout="total, prev, pager, next" small background @change="loadLogs" />
       </div>
     </el-card>
   </div>
@@ -157,7 +158,7 @@ const sourceLabelMap = {
   env_agent: '环境管理', env_manager: '环境管理',
   attack: '模拟攻击',
   defense: '模拟防御',
-  target: '靶场', auth: '认证', docker: 'Docker', system: '系统'
+  target: '环境管理', auth: '认证', docker: 'Docker', system: '系统'
 }
 
 const filteredLogs = computed(() => {
@@ -182,7 +183,7 @@ function formatTime(time) {
   if (!time) return '--'
   const d = new Date(time)
   const pad = n => String(n).padStart(2, '0')
-  return `${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+  return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
 }
 
 async function loadLogs() {
@@ -191,7 +192,8 @@ async function loadLogs() {
     // 构建source参数
     let sourceParam = ''
     if (sourceFilter.value === 'env') {
-      sourceParam = 'env_agent'
+      // 环境管理相关的日志source可能是 target、env_agent、env_manager
+      sourceParam = 'target'
     } else if (sourceFilter.value !== 'all') {
       sourceParam = sourceFilter.value
     }
@@ -206,7 +208,7 @@ async function loadLogs() {
     })
 
     if (res.status === 'success') {
-      const raw = res.data || []
+      const raw = res.logs || res.data || []
       totalLogs.value = res.total || raw.length
 
       logs.value = raw.map(l => {
@@ -234,13 +236,13 @@ async function loadLogs() {
 
   await nextTick()
   if (logContainer.value) {
-    logContainer.value.scrollTop = logContainer.value.scrollHeight
+    logContainer.value.scrollTop = 0
   }
 }
 
 function updateAgentStats(rawLogs) {
   const recentLogs = rawLogs.slice(0, 50)
-  agentStats.value.env.count = recentLogs.filter(l => l.source === 'env_agent' || l.source === 'env_manager').length
+  agentStats.value.env.count = recentLogs.filter(l => l.source === 'env_agent' || l.source === 'env_manager' || l.source === 'target').length
   agentStats.value.attack.count = recentLogs.filter(l => l.source === 'attack').length
   agentStats.value.defense.count = recentLogs.filter(l => l.source === 'defense').length
 
@@ -288,9 +290,17 @@ onUnmounted(() => {
   background: rgba(8, 10, 20, 0.8);
 }
 
-.env-card { border-left: 3px solid #409eff; }
-.attack-card { border-left: 3px solid #f56c6c; }
-.defense-card { border-left: 3px solid #67c23a; }
+.env-card {
+  border-left: 3px solid #409eff;
+}
+
+.attack-card {
+  border-left: 3px solid #f56c6c;
+}
+
+.defense-card {
+  border-left: 3px solid #67c23a;
+}
 
 .agent-icon {
   width: 40px;
@@ -370,8 +380,13 @@ onUnmounted(() => {
 }
 
 @keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .log-list {
@@ -395,11 +410,25 @@ onUnmounted(() => {
   background: rgba(255, 255, 255, 0.04);
 }
 
-.log-level-danger { border-left: 3px solid #f56c6c; }
-.log-level-warning { border-left: 3px solid #e6a23c; }
-.log-level-success { border-left: 3px solid #67c23a; }
-.log-level-info { border-left: 3px solid #909399; }
-.log-level-error { border-left: 3px solid #f56c6c; }
+.log-level-danger {
+  border-left: 3px solid #f56c6c;
+}
+
+.log-level-warning {
+  border-left: 3px solid #e6a23c;
+}
+
+.log-level-success {
+  border-left: 3px solid #67c23a;
+}
+
+.log-level-info {
+  border-left: 3px solid #909399;
+}
+
+.log-level-error {
+  border-left: 3px solid #f56c6c;
+}
 
 .log-time {
   color: #666;
@@ -431,6 +460,7 @@ onUnmounted(() => {
   .agent-status-row .el-col {
     margin-bottom: 8px;
   }
+
   .header-actions {
     width: 100%;
   }

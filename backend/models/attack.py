@@ -216,12 +216,26 @@ class Attack:
     def get_attack_types():
         """获取攻击类型列表"""
         return [
+            # Web漏洞攻击
             {'type': 'SQL注入', 'category': 'Web攻击', 'description': 'SQL注入攻击'},
             {'type': 'XSS攻击', 'category': 'Web攻击', 'description': '跨站脚本攻击'},
             {'type': 'CSRF攻击', 'category': 'Web攻击', 'description': '跨站请求伪造'},
-            {'type': '命令执行', 'category': '系统攻击', 'description': '命令注入攻击'},
-            {'type': '端口扫描', 'category': '信息收集', 'description': '端口扫描'},
-            {'type': '暴力破解', 'category': '认证攻击', 'description': '暴力破解'}
+            {'type': '文件包含', 'category': 'Web攻击', 'description': '文件包含漏洞攻击'},
+            {'type': '命令执行', 'category': 'Web攻击', 'description': '命令注入攻击'},
+            {'type': 'SSRF攻击', 'category': 'Web攻击', 'description': '服务端请求伪造攻击'},
+            {'type': 'XXE注入', 'category': 'Web攻击', 'description': 'XML外部实体注入攻击'},
+            # 系统层攻击
+            {'type': '权限提升', 'category': '系统攻击', 'description': '权限提升攻击'},
+            {'type': '容器逃逸', 'category': '系统攻击', 'description': '容器逃逸攻击'},
+            {'type': '反弹Shell', 'category': '系统攻击', 'description': '反弹Shell攻击'},
+            # 网络攻击
+            {'type': '端口扫描', 'category': '网络攻击', 'description': '端口扫描'},
+            {'type': '暴力破解', 'category': '网络攻击', 'description': '暴力破解攻击'},
+            {'type': '中间人攻击', 'category': '网络攻击', 'description': '中间人攻击'},
+            # 高级持续性威胁
+            {'type': '后门植入', 'category': 'APT攻击', 'description': '后门植入攻击'},
+            {'type': '横向移动', 'category': 'APT攻击', 'description': '横向移动攻击'},
+            {'type': '数据外传', 'category': 'APT攻击', 'description': '数据外传攻击'}
         ]
     
     def save(self):

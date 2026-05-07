@@ -92,23 +92,38 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { Umbrella, Warning, Lock, DataLine, Timer, List, Document } from '@element-plus/icons-vue'
 import StatCard from '@/components/StatCard.vue'
-import axios from 'axios'
+import request from '@/utils/request'
 
 const defenseLogs = ref([])
 const activeBlocks = ref({})
 const stats = ref({ total_attacks: 0, defense_logs_count: 0 })
+let refreshTimer = null
 
-// 防御策略表数据
+// 防御策略表数据（与攻击类型完全同步，共16种）
 const defenseTableData = [
+  // Web漏洞攻击
   { attack_type: 'SQL注入', level_1: '参数化查询', level_2: 'WAF规则', level_3: 'SQL审计', level_4: '数据库隔离', level_5: '只读模式' },
   { attack_type: 'XSS攻击', level_1: '输入过滤', level_2: '输出编码', level_3: 'CSP策略', level_4: 'DOM净化', level_5: '沙箱隔离' },
-  { attack_type: '暴力破解', level_1: '延迟响应', level_2: '验证码', level_3: '临时封禁', level_4: '永久封禁', level_5: '全域封锁' },
+  { attack_type: 'CSRF攻击', level_1: 'Token验证', level_2: 'Referer检查', level_3: 'SameSite Cookie', level_4: '请求签名', level_5: '二次确认' },
+  { attack_type: '文件包含', level_1: '路径过滤', level_2: '白名单校验', level_3: '文件隔离', level_4: '沙箱执行', level_5: '禁用包含' },
+  { attack_type: '命令执行', level_1: '命令过滤', level_2: '禁用函数', level_3: '容器隔离', level_4: '审计', level_5: '沙箱' },
+  { attack_type: 'SSRF攻击', level_1: 'URL校验', level_2: '内网IP过滤', level_3: 'DNS解析检查', level_4: '请求代理', level_5: '网络隔离' },
+  { attack_type: 'XXE注入', level_1: '禁用DTD', level_2: 'XML过滤', level_3: '输入验证', level_4: 'WAF规则', level_5: '沙箱解析' },
+  // 系统层攻击
+  { attack_type: '权限提升', level_1: '最小权限', level_2: 'SELinux', level_3: '内核加固', level_4: '审计追踪', level_5: '容器隔离' },
+  { attack_type: '容器逃逸', level_1: '只读根fs', level_2: 'Capabilities限制', level_3: 'Seccomp', level_4: 'AppArmor', level_5: '沙箱嵌套' },
+  { attack_type: '反弹Shell', level_1: '出站过滤', level_2: '端口限制', level_3: '行为检测', level_4: '进程隔离', level_5: '网络阻断' },
+  // 网络攻击
   { attack_type: '端口扫描', level_1: '记录日志', level_2: '减速响应', level_3: '临时封禁', level_4: '永久封禁', level_5: '蜜罐启动' },
-  { attack_type: 'DDoS攻击', level_1: '限流', level_2: 'SYN Cookie', level_3: '流量清洗', level_4: '黑洞路由', level_5: '弹性扩容' },
-  { attack_type: '命令执行', level_1: '命令过滤', level_2: '禁用函数', level_3: '容器隔离', level_4: '审计', level_5: '沙箱' }
+  { attack_type: '暴力破解', level_1: '延迟响应', level_2: '验证码', level_3: '临时封禁', level_4: '永久封禁', level_5: '全域封锁' },
+  { attack_type: '中间人攻击', level_1: 'HSTS', level_2: '证书固定', level_3: '双向TLS', level_4: '流量加密', level_5: '网络隔离' },
+  // 高级持续性威胁
+  { attack_type: '后门植入', level_1: '文件监控', level_2: '进程审计', level_3: '行为分析', level_4: 'Rootkit检测', level_5: '系统还原' },
+  { attack_type: '横向移动', level_1: '网络分段', level_2: '零信任', level_3: '微隔离', level_4: '行为基线', level_5: '自动响应' },
+  { attack_type: '数据外传', level_1: '流量监控', level_2: 'DLP策略', level_3: '数据脱敏', level_4: '出口过滤', level_5: '网络阻断' }
 ]
 
 const activeBlocksCount = computed(() => Object.keys(activeBlocks.value).length)
@@ -117,10 +132,10 @@ const defenseLogsCount = computed(() => defenseLogs.value.length)
 
 async function loadDefenseStatus() {
   try {
-    const res = await axios.get('/api/agents/defense/status')
-    if (res.data.status === 'success') {
-      stats.value = res.data.data
-      activeBlocks.value = res.data.data.active_blocks || {}
+    const res = await request.get('/agents/defense/status')
+    if (res.status === 'success') {
+      stats.value = res.data
+      activeBlocks.value = res.data.active_blocks || {}
     }
   } catch (e) {
     console.error('加载防御状态失败', e)
@@ -129,14 +144,15 @@ async function loadDefenseStatus() {
 
 async function loadDefenseLogs() {
   try {
-    const res = await axios.get('/api/agents/defense/logs')
-    if (res.data.status === 'success') {
-      defenseLogs.value = res.data.logs || []
+    const res = await request.get('/agents/defense/logs', { params: { limit: 100 } })
+    if (res.status === 'success') {
+      defenseLogs.value = res.logs || []
     }
   } catch (e) {
     console.error('加载防御日志失败', e)
   }
 }
+
 
 function getLevelType(level) {
   if (level >= 4) return 'danger'
@@ -152,6 +168,15 @@ function formatTime(time) {
 onMounted(() => {
   loadDefenseStatus()
   loadDefenseLogs()
+  // 每3秒自动刷新防御状态
+  refreshTimer = setInterval(() => {
+    loadDefenseStatus()
+    loadDefenseLogs()
+  }, 3000)
+})
+
+onUnmounted(() => {
+  if (refreshTimer) clearInterval(refreshTimer)
 })
 </script>
 

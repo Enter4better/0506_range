@@ -116,6 +116,36 @@
             </el-icon> 发起攻击
           </el-button>
 
+          <!-- 攻防进度条（攻击后显示） -->
+          <div v-if="showProgress" style="margin-top: 14px;">
+            <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">
+              攻防进度
+              <el-tag :type="progressStatus.type" size="small" style="margin-left: 6px;">{{ progressStatus.text
+              }}</el-tag>
+            </div>
+            <div style="margin-bottom: 8px;">
+              <div
+                style="display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted); margin-bottom: 2px;">
+                <span>攻击: {{ attackPhaseName }}</span>
+                <span>{{ attackPhasePercent }}%</span>
+              </div>
+              <el-progress :percentage="attackPhasePercent" :color="attackPhaseColor" :stroke-width="10"
+                :format="() => ''" />
+            </div>
+            <div>
+              <div
+                style="display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted); margin-bottom: 2px;">
+                <span>防御: {{ defenseLevelName }}</span>
+                <span>{{ defenseLevelPercent }}%</span>
+              </div>
+              <el-progress :percentage="defenseLevelPercent" :color="defenseLevelColor" :stroke-width="10"
+                :format="() => ''" />
+            </div>
+            <div v-if="progressMessage" style="margin-top: 8px;">
+              <el-alert :title="progressMessage" :type="progressAlertType" :closable="false" show-icon size="small" />
+            </div>
+          </div>
+
           <!-- 最近攻击记录 -->
           <div v-if="recentAttacks.length > 0" style="margin-top: 14px;">
             <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 8px;">最近攻击</div>
@@ -348,11 +378,11 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { DataLine, Aim, Cpu, Connection, Monitor, Warning, CircleCheck, Timer, Refresh, Setting, Loading, Umbrella } from '@element-plus/icons-vue'
-import axios from 'axios'
+import request from '@/utils/request'
 
 const router = useRouter()
 const backendStatus = ref(false)
@@ -380,7 +410,37 @@ const blockedCount = ref(0)
 const cpuUsage = ref(35)
 const memUsage = ref(42)
 
+// 攻防进度状态
+const showProgress = ref(false)
+const attackPhasePercent = ref(0)
+const attackPhaseName = ref('信息收集')
+const attackPhaseColor = ref('#909399')
+const defenseLevelPercent = ref(20)
+const defenseLevelName = ref('监控级')
+const defenseLevelColor = ref('#909399')
+const progressMessage = ref('')
+const progressAlertType = ref('info')
+const progressStatus = ref({ type: 'warning', text: '执行中' })
+let progressTimer = null
+
 const intensityMarks = { 1: '低', 3: '轻', 5: '中', 7: '强', 10: '极高' }
+
+const phaseNames = {
+  1: '信息收集', 2: '漏洞探测', 3: '漏洞利用',
+  4: '权限维持', 5: '横向移动', 6: '痕迹清理'
+}
+const phaseColors = {
+  1: '#909399', 2: '#409eff', 3: '#e6a23c',
+  4: '#f56c6c', 5: '#f56c6c', 6: '#909399'
+}
+const defenseLevelNames = {
+  1: '监控级', 2: '过滤级', 3: '阻断级',
+  4: '封禁级', 5: '极限级'
+}
+const defenseLevelColors = {
+  1: '#909399', 2: '#409eff', 3: '#e6a23c',
+  4: '#f56c6c', 5: '#f56c6c'
+}
 
 const stats = ref([
   { key: 'health', title: '靶场健康度', value: '--', icon: 'CircleCheck', color: '#00e676', class: '', trend: 5 },
@@ -391,12 +451,11 @@ const stats = ref([
 
 async function loadStats() {
   try {
-    const res = await axios.get('/api/stats/overview')
+    const res = await request.get('/stats/overview')
     backendStatus.value = true
-    const data = res.data || {}
+    const data = res || {}
     const statsData = data.stats || {}
 
-    // 使用真实数据
     stats.value[0].value = (statsData.health || 95) + '%'
     stats.value[0].class = 'stat-active'
     stats.value[1].value = statsData.alerts > 5 ? '中' : '低'
@@ -423,11 +482,9 @@ async function loadTopo() {
   if (!topoRef.value) return
   topoLoading.value = true
   try {
-    const res = await axios.get('/api/topology/')
-    const data = res.data || {}
-    // 使用后端返回的真实节点和边数据
+    const res = await request.get('/topology/')
+    const data = res || {}
     if (data.status === 'success' && data.nodes && data.nodes.length > 0) {
-      // 将后端数据转换为绘图格式
       const nodes = data.nodes.map((n, i) => ({
         id: n.id,
         name: n.label || n.name || n.id,
@@ -441,7 +498,6 @@ async function loadTopo() {
       }))
       drawTopoFromData(nodes, links)
     } else {
-      // 无数据时显示空拓扑
       drawTopoFromData([{ id: 'server', name: '靶场服务器', type: 'server', x: 50, y: 50 }], [])
     }
   } catch {
@@ -456,15 +512,9 @@ function drawTopoFromData(nodes, links) {
   const h = 360
 
   const typeColors = {
-    router: '#00e5ff',
-    firewall: '#8b2ce6',
-    ids: '#8b2ce6',
-    switch: '#00e5ff',
-    attacker: '#ff4466',
-    target: '#00e676',
-    dmz: '#ffd740',
-    logserver: '#00e676',
-    range: '#00e676',
+    router: '#00e5ff', firewall: '#8b2ce6', ids: '#8b2ce6',
+    switch: '#00e5ff', attacker: '#ff4466', target: '#00e676',
+    dmz: '#ffd740', logserver: '#00e676', range: '#00e676',
   }
 
   const typeLabels = {
@@ -486,22 +536,16 @@ function drawTopoFromData(nodes, links) {
   ]
 
   const linksToDraw = links || [
-    { source: 'core', target: 'fw' },
-    { source: 'core', target: 'ids' },
-    { source: 'fw', target: 'sw' },
-    { source: 'ids', target: 'sw' },
-    { source: 'sw', target: 'attacker' },
-    { source: 'sw', target: 'target-a' },
-    { source: 'sw', target: 'target-b' },
-    { source: 'sw', target: 'dmz' },
-    { source: 'target-a', target: 'range' },
-    { source: 'target-b', target: 'range' },
+    { source: 'core', target: 'fw' }, { source: 'core', target: 'ids' },
+    { source: 'fw', target: 'sw' }, { source: 'ids', target: 'sw' },
+    { source: 'sw', target: 'attacker' }, { source: 'sw', target: 'target-a' },
+    { source: 'sw', target: 'target-b' }, { source: 'sw', target: 'dmz' },
+    { source: 'target-a', target: 'range' }, { source: 'target-b', target: 'range' },
   ]
 
   const nodeMap = {}
   nodesToDraw.forEach(n => { nodeMap[n.id] = n })
 
-  // 绘制连接线（带动画效果）
   const lineElements = linksToDraw.map((l, i) => {
     const s = nodeMap[l.source]
     const t = nodeMap[l.target]
@@ -516,7 +560,6 @@ function drawTopoFromData(nodes, links) {
       class="topo-line topo-line-${i}"/>`
   }).join('')
 
-  // 绘制节点
   const nodeElements = nodesToDraw.map(n => {
     const cx = n.x * w / 100
     const cy = n.y * h / 100
@@ -563,7 +606,6 @@ function drawTopoFromData(nodes, links) {
 
   el.innerHTML = svg
 
-  // 添加节点点击事件
   el.querySelectorAll('.topo-node').forEach(nodeEl => {
     nodeEl.addEventListener('click', () => {
       const nodeId = nodeEl.getAttribute('data-id')
@@ -576,25 +618,87 @@ function drawTopoFromData(nodes, links) {
   })
 }
 
+// 攻防进度轮询
+function startProgressAnimation(sessionId) {
+  showProgress.value = true
+  attackPhasePercent.value = 16
+  defenseLevelPercent.value = 20
+  progressMessage.value = '动态攻防已启动...'
+  progressAlertType.value = 'info'
+  progressStatus.value = { type: 'warning', text: '执行中' }
+
+  if (progressTimer) clearInterval(progressTimer)
+  progressTimer = setInterval(async () => {
+    try {
+      const res = await request.get(`/attack/session/${sessionId}`)
+      if (res.status === 'success') {
+        const session = res.session || {}
+        const attackStatus = res.attack_status || {}
+        const defenseStatus = res.defense_status || {}
+
+        const phase = attackStatus.current_phase || session.current_phase || 1
+        const defLevel = defenseStatus.current_level || session.defense_level || 1
+
+        attackPhasePercent.value = Math.round((phase / 6) * 100)
+        attackPhaseName.value = phaseNames[phase] || `阶段${phase}`
+        attackPhaseColor.value = phaseColors[phase] || '#909399'
+
+        defenseLevelPercent.value = Math.round((defLevel / 5) * 100)
+        defenseLevelName.value = defenseLevelNames[defLevel] || `等级${defLevel}`
+        defenseLevelColor.value = defenseLevelColors[defLevel] || '#909399'
+
+        if (session.status === 'active') {
+          progressMessage.value = `攻击阶段${phase} | 防御等级${defLevel}`
+          progressAlertType.value = defLevel >= 3 ? 'warning' : 'info'
+        }
+
+        if (session.attacks_count > 0) {
+          progressStatus.value = { type: 'success', text: '已完成' }
+          progressMessage.value = `攻防完成！阶段${phase}，防御等级${defLevel}`
+          progressAlertType.value = 'success'
+          clearInterval(progressTimer)
+          progressTimer = null
+        }
+      }
+    } catch (e) {
+      // 会话可能已结束
+    }
+  }, 2000)
+}
+
 async function startAttack() {
   attackLoading.value = true
+  showProgress.value = false
   try {
-    const res = await axios.post('/api/attack/create', {
+    const createRes = await request.post('/attack/create', {
       name: attackType.value + '测试',
       attack_type: attackType.value,
       target: 'localhost:' + targetPort.value,
       port: targetPort.value,
       intensity: attackIntensity.value
     })
-    ElMessage.success('攻击已启动')
 
-    // 添加到最近攻击记录
-    recentAttacks.value.unshift({
-      id: Date.now(),
-      type: attackType.value,
-      time: new Date().toLocaleTimeString('zh-CN'),
-      success: true
-    })
+    if (createRes.status === 'success') {
+      const attackId = createRes.attack?.attack_id || Date.now()
+      const execRes = await request.post(`/attack/execute/${attackId}`)
+
+      if (execRes.status === 'success') {
+        const sessionId = execRes.session_id || ''
+        startProgressAnimation(sessionId)
+
+        recentAttacks.value.unshift({
+          id: Date.now(),
+          type: attackType.value,
+          time: new Date().toLocaleTimeString('zh-CN'),
+          success: true
+        })
+        ElMessage.success('动态攻防已启动')
+      } else {
+        throw new Error(execRes.msg || '攻击执行失败')
+      }
+    } else {
+      throw new Error(createRes.msg || '创建攻击失败')
+    }
 
     await loadStats()
   } catch (e) {
@@ -613,11 +717,10 @@ async function aiAnalyze() {
   aiResult.value = ''
   aiSuggestions.value = []
   try {
-    const res = await axios.post('/api/ai/analyze', {})
+    const res = await request.post('/api/ai/analyze', {})
     const data = res.data?.data || {}
     aiResult.value = data.analysis || '分析完成：系统运行正常，未发现明显安全威胁。'
 
-    // 提取建议
     const suggestions = []
     if (aiResult.value.includes('建议')) {
       const lines = aiResult.value.split('\n')
@@ -643,7 +746,7 @@ async function aiAnalyze() {
 async function startDefense() {
   defenseLoading.value = true
   try {
-    const res = await axios.post('/api/defense/create', {
+    const res = await request.post('/defense/create', {
       name: defenseType.value + '防御规则',
       defense_type: defenseType.value,
       description: '快速防御规则',
@@ -676,6 +779,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   if (refreshInterval) clearInterval(refreshInterval)
+  if (progressTimer) clearInterval(progressTimer)
   window.removeEventListener('resize', loadTopo)
 })
 </script>
@@ -717,7 +821,6 @@ onUnmounted(() => {
   letter-spacing: 0.5px !important;
 }
 
-/* 统计卡片标题使用科技风字体 */
 :deep(.el-statistic__title) {
   font-family: var(--font-display) !important;
   font-weight: 600 !important;
@@ -729,12 +832,10 @@ onUnmounted(() => {
   font-weight: 700 !important;
 }
 
-/* 描述列表标签 */
 :deep(.el-descriptions__label) {
   font-family: var(--font-mono) !important;
 }
 
-/* 时间线文字 */
 :deep(.el-timeline-item__timestamp) {
   font-family: var(--font-mono) !important;
 }

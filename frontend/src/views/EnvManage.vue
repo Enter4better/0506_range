@@ -177,9 +177,8 @@
           </el-input>
           <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">格式: 主机端口:容器端口</div>
         </el-form-item>
-        <el-form-item label="靶场名称">
-          <el-input v-model="createForm.name" placeholder="可选，不填则自动生成" />
-        </el-form-item>
+        <!-- 靶场名称自动生成，无需用户输入 -->
+
       </el-form>
       <template #footer>
         <el-button @click="showCreateModal = false">取消</el-button>
@@ -213,9 +212,9 @@ let refreshInterval = null
 // 获取靶场列表
 async function fetchTargets() {
   try {
-    const res = await request.get('/api/env/list')
-    if (res.data.status === 'success') {
-      targets.value = res.data.containers || res.data.data || []
+    const res = await request.get('/env/list')
+    if (res.status === 'success') {
+      targets.value = res.containers || res.data || []
       // 格式化数据，确保所有字段都正确显示
       targets.value = targets.value.map(t => ({
         ...t,
@@ -254,16 +253,16 @@ async function createTarget() {
   try {
     const postData = {
       image: createForm.image,
-      port: createForm.port,
-      name: createForm.name || ''
+      port: createForm.port
     }
 
     console.log('发送创建请求:', postData)
 
-    const res = await request.post('/api/env/create', postData)
+    const res = await request.post('/env/create', postData)
 
-    if (res.data.status === 'success') {
-      ElMessage.success(`靶场创建成功: ${res.data.name || createForm.image}`)
+
+    if (res.status === 'success') {
+      ElMessage.success(`靶场创建成功: ${res.name || createForm.image}`)
       showCreateModal.value = false
       // 重置表单
       createForm.image = ''
@@ -274,7 +273,7 @@ async function createTarget() {
         fetchTargets()
       }, 1000)
     } else {
-      ElMessage.error(res.data.msg || '创建失败')
+      ElMessage.error(res.msg || '创建失败')
     }
   } catch (err) {
     console.error('创建失败:', err)
@@ -285,12 +284,12 @@ async function createTarget() {
 async function startTarget(target) {
   try {
     const id = target.id || target.target_id || target.name
-    const res = await request.post(`/api/env/start/${id}`)
-    if (res.data.status === 'success') {
+    const res = await request.post(`/env/start/${id}`)
+    if (res.status === 'success') {
       ElMessage.success(`靶场已启动: ${target.name}`)
       await fetchTargets()
     } else {
-      ElMessage.error(res.data.msg || '启动失败')
+      ElMessage.error(res.msg || '启动失败')
     }
   } catch (err) {
     ElMessage.error('启动失败')
@@ -301,12 +300,12 @@ async function startTarget(target) {
 async function stopTarget(target) {
   try {
     const id = target.id || target.target_id || target.name
-    const res = await request.post(`/api/env/stop/${id}`)
-    if (res.data.status === 'success') {
+    const res = await request.post(`/env/stop/${id}`)
+    if (res.status === 'success') {
       ElMessage.success(`靶场已停止: ${target.name}`)
       await fetchTargets()
     } else {
-      ElMessage.error(res.data.msg || '停止失败')
+      ElMessage.error(res.msg || '停止失败')
     }
   } catch (err) {
     ElMessage.error('停止失败')
@@ -321,12 +320,12 @@ async function deleteTarget(target) {
     })
 
     const id = target.id || target.target_id || target.name
-    const res = await request.post(`/api/env/delete/${id}`)
-    if (res.data.status === 'success') {
+    const res = await request.post(`/env/delete/${id}`)
+    if (res.status === 'success') {
       ElMessage.success(`靶场已删除: ${target.name}`)
       await fetchTargets()
     } else {
-      ElMessage.error(res.data.msg || '删除失败')
+      ElMessage.error(res.msg || '删除失败')
     }
   } catch (err) {
     if (err !== 'cancel') {
@@ -342,12 +341,12 @@ async function cleanAllTargets() {
       type: 'warning'
     })
 
-    const res = await request.post('/api/env/clean')
-    if (res.data.status === 'success') {
-      ElMessage.success(`已清理 ${res.data.cleaned} 个靶场`)
+    const res = await request.post('/env/clean')
+    if (res.status === 'success') {
+      ElMessage.success(`已清理 ${res.cleaned} 个靶场`)
       await fetchTargets()
     } else {
-      ElMessage.error(res.data.msg || '清理失败')
+      ElMessage.error(res.msg || '清理失败')
     }
   } catch (err) {
     if (err !== 'cancel') {

@@ -1,4 +1,4 @@
-o<template>
+<template>
   <div class="page-container">
     <!-- 页面头部 -->
     <div class="page-header">
@@ -28,32 +28,8 @@ o<template>
     </el-row>
 
     <el-row :gutter="16">
-      <!-- 左侧：攻击配置 -->
+      <!-- 左侧：攻击配置 + 攻击结果 -->
       <el-col :xs="24" :lg="14">
-        <!-- 快速模板 -->
-        <el-card shadow="hover" class="tech-card" style="margin-bottom: 16px;">
-          <template #header>
-            <div class="card-header">
-              <span class="card-title"><el-icon>
-                  <MagicStick />
-                </el-icon> 快速模板</span>
-              <el-button text type="primary" @click="showTemplates = !showTemplates">
-                {{ showTemplates ? '收起' : '展开' }}
-              </el-button>
-            </div>
-          </template>
-          <div v-show="showTemplates" class="template-grid">
-            <div v-for="template in templates" :key="template.name" class="template-item"
-              @click="applyTemplate(template)">
-              <el-icon class="template-icon">
-                <Position />
-              </el-icon>
-              <span class="template-name">{{ template.name }}</span>
-              <span class="template-count">{{ template.attacks?.length || 0 }} 个攻击</span>
-            </div>
-          </div>
-        </el-card>
-
         <!-- 攻击配置表单 -->
         <el-card shadow="hover" class="tech-card" style="margin-bottom: 16px;">
           <template #header>
@@ -110,11 +86,6 @@ o<template>
               </el-col>
             </el-row>
 
-            <el-form-item label="攻击参数">
-              <el-input v-model="form.params" type="textarea" :rows="4" placeholder="输入JSON格式的攻击参数"
-                class="code-textarea" />
-            </el-form-item>
-
             <el-form-item label="攻击强度">
               <div class="intensity-wrapper">
                 <el-slider v-model="form.intensity" :min="1" :max="10" :marks="intensityMarks"
@@ -125,7 +96,28 @@ o<template>
                   强度 {{ form.intensity }} - {{ formatIntensity(form.intensity) }}
                 </el-tag>
               </div>
+              <!-- 强度效果预览 -->
+              <div class="intensity-preview">
+                <div class="preview-row">
+                  <span class="preview-label">攻击成功率</span>
+                  <el-progress :percentage="intensityPreview.successRate" :color="intensityPreview.successColor"
+                    :stroke-width="12" :format="() => intensityPreview.successRate + '%'" />
+                </div>
+                <div class="preview-row">
+                  <span class="preview-label">防御拦截率</span>
+                  <el-progress :percentage="intensityPreview.blockRate" :color="intensityPreview.blockColor"
+                    :stroke-width="12" :format="() => intensityPreview.blockRate + '%'" />
+                </div>
+                <div class="preview-row">
+                  <span class="preview-label">防御升级速度</span>
+                  <el-tag :type="intensityPreview.defenseTagType" size="small">
+                    {{ intensityPreview.defenseSpeed }}
+                  </el-tag>
+                </div>
+                <div class="preview-desc">{{ intensityPreview.description }}</div>
+              </div>
             </el-form-item>
+
           </el-form>
 
           <!-- 操作按钮区域 -->
@@ -139,75 +131,18 @@ o<template>
                 </el-icon>
                 发起攻击
               </el-button>
-              <el-button size="default" @click="saveAsTemplate" :disabled="!form.type">
-                <el-icon>
-                  <FolderAdd />
-                </el-icon>
-                保存为模板
-              </el-button>
               <el-button size="default" @click="resetForm">
                 <el-icon>
                   <Refresh />
                 </el-icon>
                 重置配置
               </el-button>
-              <el-button type="success" @click="aiPlanAttack" :disabled="!form.target">
-                <el-icon>
-                  <MagicStick />
-                </el-icon>
-                AI智能规划攻击
-              </el-button>
             </div>
           </div>
         </el-card>
 
-        <!-- 防御概览卡片 -->
-        <el-card shadow="hover" class="tech-card defense-card" style="margin-bottom: 16px;">
-          <template #header>
-            <div class="card-header">
-              <span class="card-title"><el-icon>
-                  <Umbrella />
-                </el-icon> 防御状态概览</span>
-              <el-button text type="primary" size="small" @click="goToDefense">
-                详细配置
-              </el-button>
-            </div>
-          </template>
-          <div class="defense-summary">
-            <div class="defense-stat-row">
-              <div class="defense-stat-item">
-                <span class="defense-stat-label">防火墙规则</span>
-                <span class="defense-stat-value">{{ defenseStats.firewallRules }}</span>
-              </div>
-              <div class="defense-stat-item">
-                <span class="defense-stat-label">入侵检测</span>
-                <span class="defense-stat-value">{{ defenseStats.idsRules }}</span>
-              </div>
-              <div class="defense-stat-item">
-                <span class="defense-stat-label">WAF规则</span>
-                <span class="defense-stat-value">{{ defenseStats.wafRules }}</span>
-              </div>
-              <div class="defense-stat-item">
-                <span class="defense-stat-label">防护状态</span>
-                <el-tag :type="defenseStats.active ? 'success' : 'warning'" size="small">
-                  {{ defenseStats.active ? '已启用' : '未启用' }}
-                </el-tag>
-              </div>
-            </div>
-            <div class="defense-actions">
-              <p class="defense-tip">建议在执行攻击前先配置防御规则</p>
-              <el-button type="success" size="default" @click="goToDefense">
-                <el-icon>
-                  <Umbrella />
-                </el-icon>
-                配置防御策略
-              </el-button>
-            </div>
-          </div>
-        </el-card>
-
-        <!-- 攻击结果 -->
-        <el-card shadow="hover" class="tech-card" v-if="result">
+        <!-- 攻击结果（常态显示） -->
+        <el-card shadow="hover" class="tech-card">
           <template #header>
             <div class="card-header">
               <span class="card-title">
@@ -216,7 +151,7 @@ o<template>
                 </el-icon>
                 攻击结果
               </span>
-              <div class="result-actions">
+              <div class="result-actions" v-if="result">
                 <el-tag :type="resultType" size="small">{{ resultStatus }}</el-tag>
                 <el-button text size="small" @click="copyResult">
                   <el-icon>
@@ -233,33 +168,104 @@ o<template>
               </div>
             </div>
           </template>
-          <div class="result-content">
+          <div v-if="result" class="result-content">
             <pre v-html="formatResult(result)"></pre>
           </div>
+          <div v-else class="empty-progress">
+            <el-icon :size="32" style="color: var(--text-muted);">
+              <Document />
+            </el-icon>
+            <p>暂无攻击结果，请发起攻击</p>
+          </div>
         </el-card>
+
       </el-col>
 
-      <!-- 右侧：攻击记录和队列 -->
+      <!-- 右侧：动态攻防进度 + 攻击记录 -->
       <el-col :xs="24" :lg="10">
-        <AttackQueue :queue="attackQueue" @clear="clearQueue" @remove="removeFromQueue" style="margin-bottom: 16px;" />
-        <AttackTimeline :logs="attackLogs" @refresh="loadAttackHistory" />
+        <!-- 动态攻防进度 -->
+        <el-card shadow="hover" class="tech-card" style="margin-bottom: 16px;">
+          <template #header>
+            <div class="card-header">
+              <span class="card-title">
+                <el-icon>
+                  <DataLine />
+                </el-icon>
+                动态攻防进度
+              </span>
+              <el-tag v-if="showProgress" :type="progressStatus.type" size="small">{{ progressStatus.text }}</el-tag>
+              <el-tag v-else type="info" size="small">等待中</el-tag>
+            </div>
+          </template>
+          <div v-if="showProgress" class="progress-content">
+            <!-- 攻击阶段进度 -->
+            <div class="progress-section">
+              <div class="progress-label">
+                <span>攻击阶段</span>
+                <span class="progress-value">{{ attackPhaseName }}</span>
+              </div>
+              <el-progress :percentage="attackPhasePercent" :color="attackPhaseColor" :stroke-width="16"
+                :format="attackPhaseFormat" />
+            </div>
+            <!-- 防御等级进度 -->
+            <div class="progress-section">
+              <div class="progress-label">
+                <span>防御等级</span>
+                <span class="progress-value">{{ defenseLevelName }}</span>
+              </div>
+              <el-progress :percentage="defenseLevelPercent" :color="defenseLevelColor" :stroke-width="16"
+                :format="defenseLevelFormat" />
+            </div>
+            <!-- 攻防状态信息 -->
+            <div class="progress-info" v-if="progressMessage">
+              <el-alert :title="progressMessage" :type="progressAlertType" :closable="false" show-icon />
+            </div>
+          </div>
+          <div v-else class="empty-progress">
+            <el-icon :size="32" style="color: var(--text-muted);">
+              <DataLine />
+            </el-icon>
+            <p>暂无攻防数据，请发起攻击</p>
+          </div>
+        </el-card>
+
+        <!-- 攻击记录 -->
+        <AttackTimeline :logs="attackLogs" :total="attackTotal" @refresh="loadAttackHistory"
+          @page-change="onAttackPageChange" />
       </el-col>
     </el-row>
 
     <!-- 选择靶场对话框 -->
-    <el-dialog v-model="targetDialogVisible" title="选择靶场" width="600px">
-      <el-table :data="targets" style="width: 100%" v-loading="loadingTargets">
-        <el-table-column prop="name" label="靶场名称" min-width="150" />
-        <el-table-column prop="image" label="镜像" min-width="120" />
-        <el-table-column prop="status" label="状态" width="100">
+    <el-dialog v-model="targetDialogVisible" title="选择靶场" width="1100px" class="tech-dialog">
+      <el-table :data="targets" stripe style="width: 100%;" size="small" v-loading="loadingTargets" max-height="400">
+        <el-table-column prop="name" label="名称" min-width="200" show-overflow-tooltip>
           <template #default="{ row }">
-            <el-tag :type="row.status === 'running' ? 'success' : 'info'" size="small">
+            <span style="color: var(--cyan); font-weight: 500;">{{ row.name }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="image" label="镜像" min-width="160" show-overflow-tooltip>
+          <template #default="{ row }">
+            <el-tag size="small" type="info">{{ row.image }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="ports" label="端口映射" min-width="120">
+          <template #default="{ row }">
+            <span style="color: var(--purple); font-family: monospace;">{{ row.ports || '-' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="status" label="状态" width="90">
+          <template #default="{ row }">
+            <el-tag :type="row.status === 'running' ? 'success' : 'danger'" size="small">
               {{ row.status === 'running' ? '运行中' : '已停止' }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="ports" label="端口" width="120" />
-        <el-table-column label="操作" width="80">
+        <el-table-column prop="created" label="创建时间" width="160">
+          <template #default="{ row }">
+            <span style="color: var(--text-muted); font-size: 12px;">{{ row.created || row.created_at || '-' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="80" fixed="right">
           <template #default="{ row }">
             <el-button type="primary" size="small" @click="selectTargetConfirm(row)">
               选择
@@ -272,19 +278,19 @@ o<template>
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
+
 import { ElMessage } from 'element-plus'
 import {
   Aim, Setting, Edit, Location, Connection,
   MagicStick, Position, List, SuccessFilled, Loading,
-  FolderAdd, Refresh, CopyDocument, Close, Monitor, Umbrella, Document
+  Refresh, CopyDocument, Close, Monitor, Document, DataLine
 } from '@element-plus/icons-vue'
 import request from '@/utils/request'
 
 // 组件
 import StatCard from '@/components/StatCard.vue'
 import AttackTypeSelect from '@/components/AttackTypeSelect.vue'
-import AttackQueue from '@/components/AttackQueue.vue'
 import AttackTimeline from '@/components/AttackTimeline.vue'
 
 // 状态
@@ -293,26 +299,114 @@ const loadingTargets = ref(false)
 const result = ref('')
 const resultType = ref('info')
 const resultStatus = ref('')
-const showTemplates = ref(true)
 const targetDialogVisible = ref(false)
 const targets = ref([])
+const selectedTargetStatus = ref(null)
 const attackLogs = ref([])
-const attackQueue = ref([])
 const attackTypes = ref([])
-const templates = ref([])
+const attackTotal = ref(0)
+const attackPage = ref(1)
+
+// 攻防进度状态
+const showProgress = ref(false)
+const attackPhasePercent = ref(0)
+const attackPhaseName = ref('信息收集')
+const defenseLevelPercent = ref(20)
+const defenseLevelName = ref('监控级')
+const progressMessage = ref('')
+const progressAlertType = ref('info')
+const progressStatus = ref({ type: 'warning', text: '执行中' })
+const currentSessionId = ref('')
+let progressTimer = null
 
 // 统计数据
 const stats = reactive({ total: 0, success: 0, running: 0, failed: 0 })
 
-// 防御统计
-const defenseStats = reactive({ firewallRules: 0, idsRules: 0, wafRules: 0, active: false })
-
 // 表单
 const intensityMarks = { 1: '隐蔽', 3: '低', 5: '中', 7: '高', 10: '极限' }
-const form = ref({ name: '', type: '', target: 'localhost', port: '80', params: '', intensity: 5 })
+const form = ref({ name: '', type: '', target: 'localhost', port: '80', intensity: 5 })
+
+// 攻击阶段颜色映射
+const phaseColors = {
+  1: '#909399', 2: '#409eff', 3: '#e6a23c',
+  4: '#f56c6c', 5: '#f56c6c', 6: '#909399'
+}
+const phaseNames = {
+  1: '信息收集', 2: '漏洞探测', 3: '漏洞利用',
+  4: '权限维持', 5: '横向移动', 6: '痕迹清理'
+}
+const defenseLevelNames = {
+  1: '监控级', 2: '过滤级', 3: '阻断级',
+  4: '封禁级', 5: '极限级'
+}
+const defenseLevelColors = {
+  1: '#909399', 2: '#409eff', 3: '#e6a23c',
+  4: '#f56c6c', 5: '#f56c6c'
+}
+
+// 攻防概率计算函数（与后端公式保持一致）
+function calcAttackSuccessRate(attackPhase, intensity, defenseLevel) {
+  // 攻击成功率 = 基础成功率 × 强度因子 × (1 - 防御等级因子)
+  const baseRates = { 1: 0.75, 2: 0.65, 3: 0.50, 4: 0.40, 5: 0.35, 6: 0.30 }
+  const baseRate = baseRates[attackPhase] || 0.50
+  const intensityFactor = 0.8 + (intensity / 10) * 0.7
+  const defenseFactor = defenseLevel / 6
+  return Math.round(baseRate * intensityFactor * (1 - defenseFactor) * 100)
+}
+
+function calcDefenseInterceptRate(attackPhase, intensity, defenseLevel, coverage) {
+  // 防御拦截率 = (防御等级因子 + 覆盖率因子) × 阶段因子 × 强度惩罚
+  const levelFactor = defenseLevel / 8
+  const coverageFactor = (coverage / 100) * 0.35
+  const phaseFactors = { 1: 0.95, 2: 0.90, 3: 0.70, 4: 0.50, 5: 0.35, 6: 0.20 }
+  const phaseFactor = phaseFactors[attackPhase] || 0.70
+  const intensityPenalty = 1.0 - (intensity / 10) * 0.15
+  let rate = (levelFactor + coverageFactor) * phaseFactor * intensityPenalty
+  rate = Math.min(0.95, Math.max(0.05, rate))
+  return Math.round(rate * 100)
+}
+
+// 强度效果预览 - 使用新的攻防概率模型
+const intensityPreview = computed(() => {
+  const i = form.value.intensity
+  // 使用阶段1（信息收集）和默认防御等级1、覆盖率50%作为预览
+  const attackPhase = 1
+  const defenseLevel = 1
+  const coverage = 50
+
+  const successRate = calcAttackSuccessRate(attackPhase, i, defenseLevel)
+  const blockRate = calcDefenseInterceptRate(attackPhase, i, defenseLevel, coverage)
+
+  // 防御升级速度
+  let defenseSpeed, defenseTagType
+  if (i < 5) {
+    defenseSpeed = '缓慢（强度<5，防御不易升级）'
+    defenseTagType = 'success'
+  } else if (i < 8) {
+    defenseSpeed = '中等（强度5-7，防御会逐步升级）'
+    defenseTagType = 'warning'
+  } else {
+    defenseSpeed = '快速（强度8-10，防御会迅速升级）'
+    defenseTagType = 'danger'
+  }
+  // 描述
+  let description
+  if (i <= 3) {
+    description = '🌱 低强度攻击：隐蔽性强，不易触发高级防御，但成功率较低'
+  } else if (i <= 6) {
+    description = '⚖️ 中等强度攻击：攻防平衡，适合常规测试场景'
+  } else {
+    description = '🔥 高强度攻击：成功率高，但会迅速触发高级防御，对抗更激烈'
+  }
+  // 颜色
+  const successColor = successRate >= 70 ? '#f56c6c' : successRate >= 50 ? '#e6a23c' : '#67c23a'
+  const blockColor = blockRate >= 50 ? '#e6a23c' : '#67c23a'
+  return { successRate, blockRate, defenseSpeed, defenseTagType, description, successColor, blockColor }
+})
 
 // 工具函数
 function getAttackTypeTag(type) {
+
   const typeMap = { 'SQL注入': 'danger', 'XSS攻击': 'warning', 'CSRF攻击': 'warning', '文件包含': 'danger', '命令执行': 'danger', 'SSRF攻击': 'warning', 'XXE注入': 'danger', '权限提升': 'danger', '容器逃逸': 'danger', '反弹Shell': 'danger', '端口扫描': 'info', '暴力破解': 'danger', '中间人攻击': 'danger', '后门植入': 'danger', '横向移动': 'danger', '数据外传': 'danger' }
   return typeMap[type] || 'info'
 }
@@ -333,8 +427,72 @@ function onAttackTypeChange(type, port) {
 }
 
 function resetForm() {
-  form.value = { name: '', type: '', target: 'localhost', port: '80', params: '', intensity: 5 }
+  form.value = { name: '', type: '', target: 'localhost', port: '80', intensity: 5 }
   result.value = ''
+  showProgress.value = false
+}
+
+// 攻防进度动画
+function startProgressAnimation(sessionId) {
+  currentSessionId.value = sessionId
+  showProgress.value = true
+  attackPhasePercent.value = 16
+  defenseLevelPercent.value = 20
+  progressMessage.value = '动态攻防已启动，防御已激活...'
+  progressAlertType.value = 'info'
+  progressStatus.value = { type: 'warning', text: '执行中' }
+
+  // 轮询获取攻防状态
+  if (progressTimer) clearInterval(progressTimer)
+  progressTimer = setInterval(async () => {
+    try {
+      const res = await request.get(`/attack/session/${sessionId}`)
+      if (res.status === 'success') {
+        const session = res.session || {}
+        const attackStatus = res.attack_status || {}
+        const defenseStatus = res.defense_status || {}
+
+        const phase = attackStatus.current_phase || session.current_phase || 1
+        const defLevel = defenseStatus.current_level || session.defense_level || 1
+
+        // 更新攻击阶段进度
+        attackPhasePercent.value = Math.round((phase / 6) * 100)
+        attackPhaseName.value = phaseNames[phase] || `阶段${phase}`
+
+        // 更新防御等级进度
+        defenseLevelPercent.value = Math.round((defLevel / 5) * 100)
+        defenseLevelName.value = defenseLevelNames[defLevel] || `等级${defLevel}`
+
+        // 更新状态信息
+        if (session.status === 'active') {
+          progressMessage.value = `攻击阶段${phase}(${attackPhaseName.value}) | 防御等级${defLevel}(${defenseLevelName.value})`
+          progressAlertType.value = defLevel >= 3 ? 'warning' : 'info'
+        }
+
+        // 如果攻击完成
+        if (session.attacks_count > 0 && session.status === 'active') {
+          progressStatus.value = { type: 'success', text: '已完成' }
+          progressMessage.value = `攻防演练完成！攻击阶段${phase}，防御等级${defLevel}`
+          progressAlertType.value = 'success'
+          clearInterval(progressTimer)
+          progressTimer = null
+        }
+
+        // 每次轮询都刷新统计，确保统计卡片实时更新
+        loadStats()
+      }
+    } catch (e) {
+      // 会话可能已结束
+    }
+  }, 2000)
+}
+
+function attackPhaseFormat(percentage) {
+  return attackPhaseName.value
+}
+
+function defenseLevelFormat(percentage) {
+  return defenseLevelName.value
 }
 
 // 攻击操作
@@ -344,8 +502,18 @@ async function launch() {
     return
   }
 
+  // 检查靶场状态（如果是从弹窗选择的靶场）
+  if (selectedTargetStatus.value) {
+    if (selectedTargetStatus.value !== 'running') {
+      ElMessage.warning('所选靶场已停止，请先启动靶场后再发起攻击')
+      loading.value = false
+      return
+    }
+  }
+
   loading.value = true
   result.value = ''
+  showProgress.value = false
 
   try {
     const createRes = await request.post('/attack/create', {
@@ -361,10 +529,21 @@ async function launch() {
       const execRes = await request.post(`/attack/execute/${attackId}`)
 
       if (execRes.status === 'success') {
-        result.value = JSON.stringify({ status: 'success', attack_id: attackId, result: '攻击测试完成', vulnerabilities_found: 2 }, null, 2)
+        const sessionId = execRes.session_id || ''
+
+        // 启动攻防进度动画
+        startProgressAnimation(sessionId)
+
+        result.value = JSON.stringify({
+          status: 'success',
+          attack_id: attackId,
+          session_id: sessionId,
+          message: '动态攻防已启动，防御已激活'
+        }, null, 2)
         resultType.value = 'success'
-        resultStatus.value = '成功'
-        ElMessage.success('攻击测试完成')
+        resultStatus.value = '攻防进行中'
+        ElMessage.success('动态攻防已启动')
+
         loadAttackHistory()
         loadStats()
       } else {
@@ -383,61 +562,24 @@ async function launch() {
   }
 }
 
-// AI智能规划攻击
-async function aiPlanAttack() {
-  if (!form.value.target) {
-    ElMessage.warning('请选择目标')
-    return
-  }
-
-  loading.value = true
-  result.value = ''
-
-  try {
-    // 调用AI接口进行攻击规划
-    const aiRes = await request.post('/agents/attack/plan', {
-      target: form.value.target,
-      port: form.value.port,
-      description: `对目标${form.value.target}:${form.value.port}进行安全测试，请规划合适的攻击策略`
-    })
-
-    if (aiRes.status === 'success') {
-      const plan = aiRes.plan
-      result.value = JSON.stringify(plan, null, 2)
-      resultType.value = 'success'
-      resultStatus.value = 'AI规划完成'
-      ElMessage.success('AI已生成攻击规划')
-
-      // 应用AI推荐的攻击类型
-      if (plan.recommended_attack) {
-        form.value.type = plan.recommended_attack
-      }
-
-      // 应用AI推荐的强度
-      if (plan.recommended_intensity) {
-        form.value.intensity = plan.recommended_intensity
-      }
-    } else {
-      throw new Error(aiRes.data.msg || 'AI规划失败')
-    }
-  } catch (e) {
-    result.value = `AI规划失败: ${e.response?.data?.msg || e.message}`
-    resultType.value = 'warning'
-    resultStatus.value = 'AI规划失败'
-    ElMessage.warning('AI规划失败')
-  } finally {
-    loading.value = false
-  }
-}
-
-// 数据加载
+// 数据加载（支持分页）
 async function loadAttackHistory() {
   try {
-    const res = await request.get('/attack/list')
-    if (res.status === 'success') attackLogs.value = res.attacks || []
+    const res = await request.get('/attack/list', {
+      params: { page: attackPage.value, limit: 10 }
+    })
+    if (res.status === 'success') {
+      attackLogs.value = res.attacks || []
+      attackTotal.value = res.total || 0
+    }
   } catch (e) {
     console.error('加载攻击历史失败', e)
   }
+}
+
+function onAttackPageChange(page) {
+  attackPage.value = page
+  loadAttackHistory()
 }
 
 async function loadStats() {
@@ -455,38 +597,21 @@ async function loadStats() {
   }
 }
 
-async function loadDefenseStats() {
-  try {
-    const res = await request.get('/defense/list')
-    if (res.status === 'success') {
-      const defenses = res.defenses || []
-      defenseStats.firewallRules = defenses.filter(d => d.defense_type === 'firewall').length
-      defenseStats.idsRules = defenses.filter(d => d.defense_type === 'ids').length
-      defenseStats.wafRules = defenses.filter(d => d.defense_type === 'waf').length
-      defenseStats.active = defenses.some(d => d.enabled)
-    }
-  } catch (e) {
-    console.error('加载防御统计失败', e)
-  }
-}
-
-// 其他操作
-function applyTemplate(template) {
-  if (template.attacks && template.attacks.length > 0) {
-    const firstAttack = template.attacks[0]
-    form.value = { name: firstAttack.name || '', type: firstAttack.type || '', target: firstAttack.target || 'localhost', port: firstAttack.port || '80', params: '', intensity: firstAttack.intensity || 5 }
-    ElMessage.success(`已应用模板: ${template.name}`)
-  }
-}
-
-function saveAsTemplate() { ElMessage.info('模板保存功能开发中') }
-
 async function selectTarget() {
   targetDialogVisible.value = true
   loadingTargets.value = true
   try {
     const res = await request.get('/env/list')
-    if (res.status === 'success') targets.value = res.containers || []
+    if (res.status === 'success') {
+      // 格式化数据，确保所有字段都正确显示（与EnvManage.vue保持一致）
+      targets.value = (res.containers || res.data || []).map(t => ({
+        ...t,
+        name: t.name || '未命名靶场',
+        image: t.image || t.os || 'unknown',
+        ports: t.ports || t.port || '-',
+        created: t.created || t.created_at || '-'
+      }))
+    }
   } catch (e) { ElMessage.error('获取靶场列表失败') }
   finally { loadingTargets.value = false }
 }
@@ -497,12 +622,10 @@ function selectTargetConfirm(target) {
     if (portMatch) form.value.port = portMatch[1]
   }
   form.value.target = 'localhost'
+  selectedTargetStatus.value = target.status
   targetDialogVisible.value = false
   ElMessage.success(`已选择靶场: ${target.name}`)
 }
-
-function clearQueue() { attackQueue.value = [] }
-function removeFromQueue(id) { attackQueue.value = attackQueue.value.filter(t => t.id !== id) }
 
 function formatResult(text) {
   if (!text) return ''
@@ -516,8 +639,6 @@ function copyResult() {
   ElMessage.success('已复制到剪贴板')
 }
 
-function goToDefense() { window.location.href = '/defense' }
-
 // 加载攻击类型
 async function loadAttackTypes() {
   try {
@@ -530,24 +651,14 @@ async function loadAttackTypes() {
   }
 }
 
-// 加载模板
-async function loadTemplates() {
-  try {
-    const res = await request.get('/attack/templates')
-    if (res.status === 'success' && res.templates) {
-      templates.value = res.templates
-    }
-  } catch (e) {
-    console.error('加载模板失败', e)
-  }
-}
-
 onMounted(() => {
   loadAttackTypes()
-  loadTemplates()
   loadAttackHistory()
   loadStats()
-  loadDefenseStats()
+})
+
+onUnmounted(() => {
+  if (progressTimer) clearInterval(progressTimer)
 })
 </script>
 
@@ -569,47 +680,6 @@ onMounted(() => {
   font-weight: 600;
   color: var(--text-primary);
   font-family: var(--font-display) !important;
-}
-
-.template-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 12px;
-}
-
-.template-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 16px;
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 8px;
-  border: 1px solid var(--border-color);
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.template-item:hover {
-  background: rgba(139, 44, 230, 0.1);
-  border-color: var(--purple);
-}
-
-.template-icon {
-  font-size: 24px;
-  color: var(--cyan);
-  margin-bottom: 8px;
-}
-
-.template-name {
-  font-size: 14px;
-  color: var(--text-primary);
-  font-family: var(--font-ui) !important;
-}
-
-.template-count {
-  font-size: 12px;
-  color: var(--text-muted);
-  margin-top: 4px;
 }
 
 .attack-form {
@@ -643,6 +713,47 @@ onMounted(() => {
   padding: 4px 12px;
 }
 
+/* 强度效果预览 */
+.intensity-preview {
+  margin-top: 12px;
+  padding: 12px;
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 8px;
+  border: 1px solid var(--border-dim);
+}
+
+.preview-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.preview-row:last-child {
+  margin-bottom: 0;
+}
+
+.preview-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  min-width: 80px;
+  flex-shrink: 0;
+}
+
+.preview-row .el-progress {
+  flex: 1;
+}
+
+.preview-desc {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border-dim);
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+
 .form-actions-wrapper {
   padding: 16px;
   background: rgba(139, 44, 230, 0.05);
@@ -663,45 +774,6 @@ onMounted(() => {
   justify-content: center;
 }
 
-.defense-summary {
-  padding: 8px;
-}
-
-.defense-stat-row {
-  display: flex;
-  gap: 16px;
-  margin-bottom: 16px;
-}
-
-.defense-stat-item {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.defense-stat-label {
-  font-size: 12px;
-  color: var(--text-muted);
-  font-family: var(--font-display) !important;
-}
-
-.defense-stat-value {
-  font-size: 18px;
-  font-weight: 600;
-  color: var(--text-primary);
-  font-family: var(--font-display) !important;
-}
-
-.defense-tip {
-  font-size: 12px;
-  color: var(--text-muted);
-  margin-bottom: 12px;
-}
-
-.defense-actions {
-  text-align: center;
-}
-
 .result-content {
   background: rgba(0, 0, 0, 0.2);
   padding: 16px;
@@ -714,11 +786,45 @@ onMounted(() => {
   overflow-y: auto;
 }
 
-@media (max-width: 768px) {
-  .defense-stat-row {
-    flex-wrap: wrap;
-  }
+/* 攻防进度条样式 */
+.progress-content {
+  padding: 8px 0;
+}
 
+.progress-section {
+  margin-bottom: 16px;
+}
+
+.progress-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.progress-value {
+  font-weight: 600;
+  color: var(--text-primary);
+  font-size: 12px;
+}
+
+.progress-info {
+  margin-top: 12px;
+}
+
+.empty-progress {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  color: var(--text-muted);
+  gap: 12px;
+}
+
+@media (max-width: 768px) {
   .form-actions {
     flex-wrap: wrap;
   }

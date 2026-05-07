@@ -53,6 +53,37 @@ class AttackAgent(BaseAgent):
         """获取某阶段可用的攻击类型"""
         return self.PHASE_ATTACKS.get(phase, self.PHASE_ATTACKS[1])
     
+    @staticmethod
+    def calculate_attack_success_rate(attack_phase: int, intensity: int, defense_level: int = 0) -> float:
+        """
+        攻击成功率 = 基础成功率 × 强度因子 × (1 - 防御等级因子)
+        
+        参数说明：
+        - attack_phase: 1-6，攻击越深入成功率越高
+        - intensity: 1-10，攻击强度
+        - defense_level: 0-5，防御等级（0=无防御）
+        """
+        # 1. 基础成功率（根据攻击阶段）
+        base_rate = {
+            1: 0.75,   # 信息收集
+            2: 0.65,   # 漏洞探测
+            3: 0.50,   # 漏洞利用
+            4: 0.40,   # 权限维持
+            5: 0.35,   # 横向移动
+            6: 0.30    # 痕迹清理
+        }.get(attack_phase, 0.50)
+        
+        # 2. 强度因子（1.0 ~ 1.5）
+        intensity_factor = 0.8 + (intensity / 10) * 0.7
+        
+        # 3. 防御等级因子（0 ~ 0.8）
+        defense_factor = defense_level / 6
+        
+        # 4. 最终成功率
+        success_rate = base_rate * intensity_factor * (1 - defense_factor)
+        
+        return round(success_rate, 3)
+
     def execute_attack(self, session_id: str, attack_type: str = None, intensity: int = 5) -> Dict:
         """执行攻击 - 自动管理阶段升级"""
         # 初始化会话数据
@@ -67,9 +98,10 @@ class AttackAgent(BaseAgent):
         session = self.session_data[session_id]
         current_phase = session['phase']
         
-        # 根据强度决定攻击成功率
-        base_success_rate = 0.3 + (intensity - 1) * 0.05
-        success = random.random() < base_success_rate
+        # 使用新的攻防概率模型计算成功率（默认防御等级1）
+        defense_level = session.get('defense_level', 1)
+        success_rate = self.calculate_attack_success_rate(current_phase, intensity, defense_level)
+        success = random.random() < success_rate
         
         # 如果成功，增加成功计数
         if success:
@@ -96,7 +128,7 @@ class AttackAgent(BaseAgent):
             'attack_phase': current_phase,
             'phase_name': self.ATTACK_PHASES[current_phase]['name'],
             'intensity': intensity,
-            'success_rate': base_success_rate,
+            'success_rate': success_rate,
             'ai_analysis': ai_analysis,
             'executed_at': datetime.now().isoformat()
         }
@@ -105,7 +137,7 @@ class AttackAgent(BaseAgent):
         session['attempts'].append(result)
         self.attack_history.append(result)
         
-        logger.info(f"[{session_id}] 攻击执行: 阶段{current_phase}-{attack_type} -> {'成功' if success else '失败'}")
+        logger.info(f"[{session_id}] 攻击执行: 阶段{current_phase}-{attack_type} -> {'成功' if success else '失败'} (成功率={success_rate:.1%})")
         
         return result
     
