@@ -348,7 +348,7 @@ async function launch() {
   result.value = ''
 
   try {
-    const createRes = await request.post('/api/attack/create', {
+    const createRes = await request.post('/attack/create', {
       name: form.value.name || form.value.type,
       attack_type: form.value.type,
       target: form.value.target + ':' + form.value.port,
@@ -356,11 +356,11 @@ async function launch() {
       intensity: form.value.intensity
     })
 
-    if (createRes.data.status === 'success') {
-      const attackId = createRes.data.attack?.attack_id || Date.now()
-      const execRes = await request.post(`/api/attack/execute/${attackId}`)
+    if (createRes.status === 'success') {
+      const attackId = createRes.attack?.attack_id || Date.now()
+      const execRes = await request.post(`/attack/execute/${attackId}`)
 
-      if (execRes.data.status === 'success') {
+      if (execRes.status === 'success') {
         result.value = JSON.stringify({ status: 'success', attack_id: attackId, result: '攻击测试完成', vulnerabilities_found: 2 }, null, 2)
         resultType.value = 'success'
         resultStatus.value = '成功'
@@ -368,10 +368,10 @@ async function launch() {
         loadAttackHistory()
         loadStats()
       } else {
-        throw new Error(execRes.data.msg || '攻击执行失败')
+        throw new Error(execRes.msg || '攻击执行失败')
       }
     } else {
-      throw new Error(createRes.data.msg || '创建攻击失败')
+      throw new Error(createRes.msg || '创建攻击失败')
     }
   } catch (e) {
     result.value = `攻击执行失败: ${e.response?.data?.msg || e.message}`
@@ -395,14 +395,14 @@ async function aiPlanAttack() {
 
   try {
     // 调用AI接口进行攻击规划
-    const aiRes = await request.post('/api/agents/attack/plan', {
+    const aiRes = await request.post('/agents/attack/plan', {
       target: form.value.target,
       port: form.value.port,
       description: `对目标${form.value.target}:${form.value.port}进行安全测试，请规划合适的攻击策略`
     })
 
-    if (aiRes.data.status === 'success') {
-      const plan = aiRes.data.plan
+    if (aiRes.status === 'success') {
+      const plan = aiRes.plan
       result.value = JSON.stringify(plan, null, 2)
       resultType.value = 'success'
       resultStatus.value = 'AI规划完成'
@@ -433,8 +433,8 @@ async function aiPlanAttack() {
 // 数据加载
 async function loadAttackHistory() {
   try {
-    const res = await request.get('/api/attack/list')
-    if (res.data.status === 'success') attackLogs.value = res.data.attacks || []
+    const res = await request.get('/attack/list')
+    if (res.status === 'success') attackLogs.value = res.attacks || []
   } catch (e) {
     console.error('加载攻击历史失败', e)
   }
@@ -442,9 +442,9 @@ async function loadAttackHistory() {
 
 async function loadStats() {
   try {
-    const res = await request.get('/api/attack/stats')
-    if (res.data.status === 'success') {
-      const userStats = res.data.user_stats || {}
+    const res = await request.get('/attack/stats')
+    if (res.status === 'success') {
+      const userStats = res.user_stats || {}
       stats.total = userStats.total || 0
       stats.success = userStats.success || 0
       stats.running = userStats.running || 0
@@ -457,9 +457,9 @@ async function loadStats() {
 
 async function loadDefenseStats() {
   try {
-    const res = await request.get('/api/defense/list')
-    if (res.data.status === 'success') {
-      const defenses = res.data.defenses || []
+    const res = await request.get('/defense/list')
+    if (res.status === 'success') {
+      const defenses = res.defenses || []
       defenseStats.firewallRules = defenses.filter(d => d.defense_type === 'firewall').length
       defenseStats.idsRules = defenses.filter(d => d.defense_type === 'ids').length
       defenseStats.wafRules = defenses.filter(d => d.defense_type === 'waf').length
@@ -485,8 +485,8 @@ async function selectTarget() {
   targetDialogVisible.value = true
   loadingTargets.value = true
   try {
-    const res = await request.get('/api/env/list')
-    if (res.data.status === 'success') targets.value = res.data.containers || []
+    const res = await request.get('/env/list')
+    if (res.status === 'success') targets.value = res.containers || []
   } catch (e) { ElMessage.error('获取靶场列表失败') }
   finally { loadingTargets.value = false }
 }
@@ -521,9 +521,9 @@ function goToDefense() { window.location.href = '/defense' }
 // 加载攻击类型
 async function loadAttackTypes() {
   try {
-    const res = await request.get('/api/attack/types')
-    if (res.data.status === 'success' && res.data.types) {
-      attackTypes.value = res.data.types
+    const res = await request.get('/attack/types')
+    if (res.status === 'success' && res.types) {
+      attackTypes.value = res.types
     }
   } catch (e) {
     console.error('加载攻击类型失败', e)
@@ -533,9 +533,9 @@ async function loadAttackTypes() {
 // 加载模板
 async function loadTemplates() {
   try {
-    const res = await request.get('/api/attack/templates')
-    if (res.data.status === 'success' && res.data.templates) {
-      templates.value = res.data.templates
+    const res = await request.get('/attack/templates')
+    if (res.status === 'success' && res.templates) {
+      templates.value = res.templates
     }
   } catch (e) {
     console.error('加载模板失败', e)
