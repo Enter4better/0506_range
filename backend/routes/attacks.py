@@ -31,7 +31,7 @@ attack_lock = threading.Lock()
 def _trigger_defense_response(attack: Attack, user_id: str):
     """触发防御响应"""
     try:
-        defenses = Defense.list_all(user_id)
+        defenses = Defense.list_all()
         active_defenses = [d for d in defenses if d.enabled]
         
         defense_responses = []

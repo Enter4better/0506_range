@@ -212,6 +212,73 @@ class Defense:
             logger.error(f"切换防御状态失败: {e}")
         return False
     
+    def check_attack(self, attack_type: str, intensity: int):
+        """检查攻击是否被防御规则拦截"""
+        try:
+            import random
+            
+            # 基础拦截率基于 coverage
+            base_block_rate = self.coverage / 100.0
+            
+            # 根据攻击类型调整拦截率
+            type_boost = {
+                'SQL Injection': 0.1,
+                'XSS': 0.1,
+                'Port Scan': 0.15,
+                'Brute Force': 0.1,
+                'CSRF': 0.05
+            }
+            
+            # 根据防御类型调整
+            defense_boost = {
+                'WAF': 0.1,
+                'IPS': 0.15,
+                'Firewall': 0.1,
+                'IDS': 0.05
+            }
+            
+            boost = type_boost.get(attack_type, 0) + defense_boost.get(self.defense_type, 0)
+            block_rate = min(0.95, base_block_rate + boost)
+            
+            # 根据攻击强度降低拦截率（高强度攻击更难防御）
+            intensity_factor = 1.0 - (intensity - 5) * 0.05
+            block_rate = max(0.05, block_rate * intensity_factor)
+            
+            blocked = random.random() < block_rate
+            
+            messages = {
+                True: [
+                    f'{self.name} 成功拦截了 {attack_type} 攻击',
+                    f'{self.defense_type} 防御系统阻断了恶意请求',
+                    f'攻击流量被 {self.name} 过滤',
+                    f'威胁检测: {attack_type} 攻击已被阻止'
+                ],
+                False: [
+                    f'{self.name} 未能完全阻止攻击',
+                    f'{attack_type} 攻击绕过了防御检查',
+                    f'防御系统未能识别此次攻击'
+                ]
+            }
+            
+            message = random.choice(messages[blocked])
+            
+            return {
+                'blocked': blocked,
+                'block_rate': round(block_rate * 100, 2),
+                'message': message,
+                'defense_name': self.name,
+                'defense_type': self.defense_type
+            }
+        except Exception as e:
+            logger.error(f"防御检查失败: {e}")
+            return {
+                'blocked': False,
+                'block_rate': 0,
+                'message': f'防御检查出错: {str(e)}',
+                'defense_name': self.name,
+                'defense_type': self.defense_type
+            }
+    
     @staticmethod
     def get_defense_types():
         """获取防御类型列表 - 使用标准安全防御类型"""
