@@ -176,7 +176,9 @@
             <div v-else class="gen-failed-section">
                 <el-empty description="配置生成失败，请返回重新描述靶场需求" :image-size="80">
                     <el-button type="primary" @click="currentStep = 0; generatedConfig = null">
-                        <el-icon><Back /></el-icon> 返回重新生成
+                        <el-icon>
+                            <Back />
+                        </el-icon> 返回重新生成
                     </el-button>
                 </el-empty>
             </div>
@@ -243,10 +245,12 @@
                 点击选择（已选 <span class="select-count">{{ pendingVulns.length }}</span> 项），再次点击取消选择
             </div>
             <div class="preset-grid">
-                <div v-for="preset in vulnPresets" :key="preset"
-                    class="preset-tag" :class="{ selected: pendingVulns.includes(preset), disabled: alreadyHasVuln(preset) }"
+                <div v-for="preset in vulnPresets" :key="preset" class="preset-tag"
+                    :class="{ selected: pendingVulns.includes(preset), disabled: alreadyHasVuln(preset) }"
                     @click="togglePendingVuln(preset)">
-                    <el-icon v-if="pendingVulns.includes(preset)" class="check-icon"><Check /></el-icon>
+                    <el-icon v-if="pendingVulns.includes(preset)" class="check-icon">
+                        <Check />
+                    </el-icon>
                     <el-icon v-else-if="alreadyHasVuln(preset)" class="check-icon added-icon"><Select /></el-icon>
                     {{ preset }}
                 </div>
@@ -256,7 +260,9 @@
             <div class="dialog-footer">
                 <el-button @click="vulnDialogVisible = false">取消</el-button>
                 <el-button type="danger" @click="confirmAddVuln" :disabled="pendingVulns.length === 0">
-                    <el-icon><Plus /></el-icon> 添加已选 ({{ pendingVulns.length }})
+                    <el-icon>
+                        <Plus />
+                    </el-icon> 添加已选 ({{ pendingVulns.length }})
                 </el-button>
             </div>
         </template>
@@ -266,7 +272,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import {
     MagicStick, Edit, Cpu, View, Monitor, Warning,
     CircleCheck, Upload, Back, Refresh, Aim, Loading, Plus, Check, Select
@@ -679,15 +685,18 @@ onMounted(() => {
     border-radius: 14px !important;
     backdrop-filter: blur(30px) !important;
 }
+
 :global(.tech-dialog .el-dialog__header) {
     border-bottom: 1px solid rgba(80, 70, 120, 0.2);
     padding-bottom: 14px;
 }
+
 :global(.tech-dialog .el-dialog__title) {
     color: #5090a0;
     font-weight: 700;
     letter-spacing: 0.04em;
 }
+
 :global(.tech-dialog .el-dialog__headerbtn .el-dialog__close) {
     color: var(--text-muted);
 }
@@ -695,21 +704,25 @@ onMounted(() => {
 .vuln-dialog-body {
     padding: 4px 0;
 }
+
 .preset-label {
     font-size: 12px;
     color: var(--text-muted);
     margin-bottom: 12px;
     line-height: 1.5;
 }
+
 .select-count {
     color: #a04050;
     font-weight: 700;
 }
+
 .preset-grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
     gap: 8px;
 }
+
 .preset-tag {
     display: flex;
     align-items: center;
@@ -726,18 +739,21 @@ onMounted(() => {
     user-select: none;
     text-align: center;
 }
+
 .preset-tag:hover:not(.disabled) {
     border-color: rgba(160, 64, 80, 0.5);
     background: rgba(160, 64, 80, 0.1);
     color: #d06070;
     transform: translateY(-1px);
 }
+
 .preset-tag.selected {
     border-color: #a04050;
     background: rgba(160, 64, 80, 0.2);
     color: #d06070;
     box-shadow: 0 0 8px rgba(160, 64, 80, 0.25);
 }
+
 .preset-tag.disabled {
     border-color: rgba(64, 160, 96, 0.3);
     background: rgba(64, 160, 96, 0.08);
@@ -745,18 +761,22 @@ onMounted(() => {
     cursor: not-allowed;
     opacity: 0.7;
 }
+
 .check-icon {
     font-size: 11px;
     flex-shrink: 0;
 }
+
 .added-icon {
     color: #50a070;
 }
+
 .dialog-footer {
     display: flex;
     justify-content: flex-end;
     gap: 10px;
 }
+
 .gen-failed-section {
     display: flex;
     align-items: center;
