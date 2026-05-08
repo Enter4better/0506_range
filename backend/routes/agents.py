@@ -497,13 +497,47 @@ def export_exercise_report():
         fmt = request.args.get('format', 'json')
 
         orchestrator = get_orchestrator()
+        session = None
 
+        # 1. 优先从内存中的 orchestrator sessions 获取
         if session_id and session_id in orchestrator.sessions:
             session = orchestrator.sessions[session_id]
         elif orchestrator.sessions:
             session_id = list(orchestrator.sessions.keys())[-1]
             session = orchestrator.sessions[session_id]
-        else:
+
+        # 2. 如果内存中没有，尝试从数据库 Target 表构建会话
+        if session is None and session_id:
+            try:
+                from models.target import Target
+                target = Target.get_by_id(int(session_id)) if session_id.isdigit() else None
+                if target is None:
+                    # 尝试按名称查找
+                    targets = Target.list_all()
+                    for t in targets:
+                        if str(t.target_id) == session_id:
+                            target = t
+                            break
+                if target:
+                    session = {
+                        'session_id': session_id,
+                        'environment': {
+                            'name': target.name or '靶场',
+                            'components': []
+                        },
+                        'attacks': [],
+                        'decision_log': [],
+                        'status': target.status or 'unknown',
+                        'created_at': target.created_at or datetime.now().isoformat(),
+                        'current_intensity': 5,
+                        'difficulty_mode': 'single',
+                        'recent_intercept_rates': [],
+                        'env_adjustments': [],
+                    }
+            except Exception as db_err:
+                current_app.logger.warning(f"从数据库构建会话失败: {db_err}")
+
+        if session is None:
             return jsonify({'status': 'error', 'msg': '没有可用的演练会话'}), 404
 
         from services.report_service import get_report_service
