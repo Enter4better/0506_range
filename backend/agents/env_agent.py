@@ -173,8 +173,13 @@ class EnvAgent(BaseAgent):
             # 创建组件（Docker容器）
             components = scenario_config.get('components', [])
             for comp in components:
-                comp_result = {'name': comp['name'], 'type': comp['type'], 'status': 'pending', 'ports': []}
-                
+                comp_result = {
+                    'name': comp.get('name', 'component'),
+                    'type': comp.get('type', 'container'),
+                    'status': 'pending',
+                    'ports': []
+                }
+
                 if docker_client:
                     image = comp.get('image', 'nginx:latest')
                     container_ports = comp.get('ports', [80])
@@ -227,19 +232,33 @@ class EnvAgent(BaseAgent):
                                       user_id=self.user_id)
                             
                         except Exception as port_err:
+                            err_str = str(port_err)
                             # 端口冲突则尝试下一组端口
-                            if 'port is already allocated' in str(port_err) or 'bind' in str(port_err).lower():
+                            if 'port is already allocated' in err_str or 'bind' in err_str.lower():
                                 continue
-                            else:
-                                # 其他错误直接抛出
-                                comp_result['status'] = 'failed'
-                                comp_result['error'] = str(port_err)
-                                result['errors'].append(f"{comp['name']}: {str(port_err)}")
-                                Log.create('danger', 'env_agent',
-                                          f"组件部署失败: {comp['name']} - {str(port_err)}",
+                            # 镜像拉取失败（403/网络问题）→ 降级为模拟模式
+                            if ('403' in err_str or 'Forbidden' in err_str or
+                                    'pull access denied' in err_str or
+                                    'failed to resolve' in err_str or
+                                    'manifest unknown' in err_str or
+                                    'unauthorized' in err_str.lower()):
+                                comp_result['status'] = 'simulated'
+                                comp_result['ports'] = comp.get('ports', [])
+                                comp_result['note'] = f'镜像拉取失败（{image}），已降级为模拟模式'
+                                Log.create('warning', 'env_agent',
+                                          f"镜像拉取失败，降级为模拟: {comp.get('name', 'component')} ({image}): {err_str[:120]}",
                                           user_id=self.user_id)
-                                container_deployed = True  # 标记为已处理
+                                container_deployed = True
                                 break
+                            # 其他错误
+                            comp_result['status'] = 'failed'
+                            comp_result['error'] = err_str
+                            result['errors'].append(f"{comp.get('name', 'component')}: {err_str}")
+                            Log.create('danger', 'env_agent',
+                                      f"组件部署失败: {comp.get('name', 'component')} - {err_str}",
+                                      user_id=self.user_id)
+                            container_deployed = True
+                            break
                     
                     if not container_deployed:
                         comp_result['status'] = 'failed'

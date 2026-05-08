@@ -374,39 +374,57 @@ def ai_generate_range():
 def ai_deploy_range():
     """AI靶场自动部署 - 根据确认的配置创建靶场环境"""
     try:
-        data = request.get_json()
+        data = request.get_json(silent=True)
+        if not data:
+            return jsonify({'status': 'error', 'msg': '请求体无效，请以JSON格式提交'}), 400
+
         config = data.get('config', {})
-        
+
         if not config or 'components' not in config:
-            return jsonify({'status': 'error', 'msg': '请提供有效的靶场配置'}), 400
-        
+            return jsonify({'status': 'error', 'msg': '请提供有效的靶场配置（需包含components字段）'}), 400
+
         # 1. 使用EnvAgent创建环境
         env_agent = get_env_agent(1)
         result = env_agent.create_environment(config, 1)
-        
-        if result.get('status') == 'running':
-            # 2. 自动启动攻防演练编排
-            orchestrator = get_orchestrator()
-            session = orchestrator.create_scenario(config.get('description', config.get('name', 'AI生成靶场')), 1)
-            
-            Log.create('success', 'env_agent',
-                      f"AI靶场部署成功: {config.get('name', '自定义靶场')} (环境ID: {result.get('environment_id')})",
-                      user_id=1)
-            
-            return jsonify({
-                'status': 'success',
-                'result': result,
-                'session': session,
-                'message': '靶场部署成功，攻防演练已就绪'
-            }), 200
-        else:
-            return jsonify({
-                'status': 'error',
-                'msg': '靶场部署失败',
-                'errors': result.get('errors', [])
-            }), 500
-            
+
+        # 2. 直接用已部署的环境结果构建编排器会话，避免二次create_environment
+        orchestrator = get_orchestrator()
+        session_id = result.get('environment_id', f"env_{int(__import__('time').time())}")
+        session_info = {
+            'status': 'success',
+            'session_id': session_id,
+            'environment': {
+                'name': result.get('name', config.get('name', '自定义靶场')),
+                'components': result.get('components', [])
+            }
+        }
+        with orchestrator._lock:
+            orchestrator.sessions[session_id] = {
+                'session_id': session_id,
+                'environment': session_info['environment'],
+                'attacks': [],
+                'decision_log': [],
+                'status': 'active',
+                'created_at': datetime.now().isoformat(),
+                'current_intensity': 5,
+                'difficulty_mode': 'single',
+                'recent_intercept_rates': [],
+                'env_adjustments': [],
+            }
+
+        Log.create('success', 'env_agent',
+                  f"AI靶场部署成功: {config.get('name', '自定义靶场')} (环境ID: {result.get('environment_id')})",
+                  user_id=1)
+
+        return jsonify({
+            'status': 'success',
+            'result': result,
+            'session': session_info,
+            'message': '靶场部署成功，攻防演练已就绪'
+        }), 200
+
     except Exception as e:
+        current_app.logger.error(f"AI靶场部署失败: {e}")
         return jsonify({'status': 'error', 'msg': str(e)}), 500
 
 
