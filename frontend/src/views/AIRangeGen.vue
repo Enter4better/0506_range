@@ -140,7 +140,7 @@
                     <el-icon>
                         <Warning />
                     </el-icon> 漏洞类型
-                    <el-button size="small" type="danger" plain style="margin-left: 8px;" @click="addVuln">
+                    <el-button size="small" type="danger" plain style="margin-left: 8px;" @click="openVulnDialog">
                         <el-icon>
                             <Plus />
                         </el-icon> 添加
@@ -225,6 +225,36 @@
             </div>
         </el-card>
     </div>
+
+    <!-- 添加漏洞弹窗 -->
+    <el-dialog v-model="vulnDialogVisible" title="添加漏洞类型" width="480px" class="tech-dialog"
+        :close-on-click-modal="false" align-center>
+        <div class="vuln-dialog-body">
+            <div class="vuln-input-row">
+                <el-input v-model="newVulnInput" placeholder="输入漏洞名称，如：SQL注入、XXE、SSRF..."
+                    maxlength="40" show-word-limit clearable @keyup.enter="confirmAddVuln"
+                    class="vuln-input" />
+            </div>
+            <div class="vuln-presets">
+                <div class="preset-label">常见漏洞快速选择：</div>
+                <div class="preset-grid">
+                    <el-tag v-for="preset in vulnPresets" :key="preset"
+                        class="preset-tag" size="small" type="danger"
+                        @click="newVulnInput = preset">
+                        {{ preset }}
+                    </el-tag>
+                </div>
+            </div>
+        </div>
+        <template #footer>
+            <div class="dialog-footer">
+                <el-button @click="vulnDialogVisible = false">取消</el-button>
+                <el-button type="danger" @click="confirmAddVuln" :disabled="!newVulnInput.trim()">
+                    <el-icon><Plus /></el-icon> 确认添加
+                </el-button>
+            </div>
+        </template>
+    </el-dialog>
 </template>
 
 <script setup>
@@ -250,6 +280,16 @@ const deployResult = ref(null)
 const deploySuccess = ref(false)
 const deployError = ref('')
 const templates = ref([])
+
+// 漏洞弹窗
+const vulnDialogVisible = ref(false)
+const newVulnInput = ref('')
+const vulnPresets = [
+    'SQL注入', 'XSS跨站脚本', 'CSRF', 'XXE',
+    'SSRF', '文件上传', '命令注入', '目录遍历',
+    '反序列化', '弱口令', '越权访问', '缓冲区溢出',
+    '容器逃逸', '暴力破解', '中间人攻击', 'IDOR'
+]
 
 // 加载场景模板
 async function loadTemplates() {
@@ -356,16 +396,25 @@ function resetAll() {
     analyzeProgress.value = 0
 }
 
-// 添加漏洞
-function addVuln() {
+// 打开漏洞弹窗
+function openVulnDialog() {
     if (!generatedConfig.value) return
+    newVulnInput.value = ''
+    vulnDialogVisible.value = true
+}
+
+// 确认添加漏洞
+function confirmAddVuln() {
+    const v = newVulnInput.value.trim()
+    if (!v) return
     if (!generatedConfig.value.vulnerabilities) {
         generatedConfig.value.vulnerabilities = []
     }
-    const newVuln = prompt('请输入要添加的漏洞类型：')
-    if (newVuln && newVuln.trim()) {
-        generatedConfig.value.vulnerabilities.push(newVuln.trim())
+    if (!generatedConfig.value.vulnerabilities.includes(v)) {
+        generatedConfig.value.vulnerabilities.push(v)
     }
+    vulnDialogVisible.value = false
+    newVulnInput.value = ''
 }
 
 // 删除漏洞
@@ -597,5 +646,70 @@ onMounted(() => {
     justify-content: center;
     gap: 12px;
     flex-wrap: wrap;
+}
+
+/* 漏洞弹窗 */
+:global(.tech-dialog) {
+    background: rgba(12, 14, 28, 0.96) !important;
+    border: 1px solid rgba(80, 144, 160, 0.35) !important;
+    border-radius: 14px !important;
+    backdrop-filter: blur(30px) !important;
+}
+:global(.tech-dialog .el-dialog__header) {
+    border-bottom: 1px solid rgba(80, 70, 120, 0.2);
+    padding-bottom: 14px;
+}
+:global(.tech-dialog .el-dialog__title) {
+    color: #5090a0;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+}
+:global(.tech-dialog .el-dialog__headerbtn .el-dialog__close) {
+    color: var(--text-muted);
+}
+
+.vuln-dialog-body {
+    padding: 4px 0;
+}
+.vuln-input-row {
+    margin-bottom: 18px;
+}
+.vuln-input :deep(.el-input__wrapper) {
+    background: rgba(8, 10, 20, 0.7);
+    border-color: rgba(80, 144, 160, 0.3);
+    box-shadow: none;
+}
+.vuln-input :deep(.el-input__inner) {
+    color: #f0f2f8;
+}
+.vuln-input :deep(.el-input__wrapper:hover),
+.vuln-input :deep(.el-input__wrapper.is-focus) {
+    border-color: #5090a0 !important;
+    box-shadow: 0 0 0 1px rgba(80, 144, 160, 0.25) !important;
+}
+.preset-label {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 10px;
+}
+.preset-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+}
+.preset-tag {
+    cursor: pointer;
+    transition: all 0.15s;
+    user-select: none;
+}
+.preset-tag:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(160, 64, 80, 0.35);
+    opacity: 0.85;
+}
+.dialog-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
 }
 </style>

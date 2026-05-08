@@ -16,6 +16,6 @@ class BaseAgent:
         """使用 AI 分析内容"""
         return self.llm.analyze_security(content)
     
-    def ai_chat(self, prompt: str, system_prompt: str = None, **kwargs) -> str:
-        """使用 AI 聊天，支持传递 temperature 等参数"""
-        return self.llm.chat(prompt, system_prompt, **kwargs)
+    def ai_chat(self, prompt: str, system_prompt: str = None, task_type: str = None, **kwargs) -> str:
+        """使用 AI 聊天，支持 task_type 自动路由模型配置"""
+        return self.llm.chat(prompt, system_prompt, task_type=task_type, **kwargs)

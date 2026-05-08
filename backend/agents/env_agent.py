@@ -94,7 +94,7 @@ class EnvAgent(BaseAgent):
 
 请返回优化后的JSON配置，保持原有结构。
 """
-            ai_response = self.ai_chat(optimization_prompt)
+            ai_response = self.ai_chat(optimization_prompt, task_type='range_generation')
             if ai_response:
                 try:
                     optimized = json.loads(ai_response)
@@ -123,7 +123,7 @@ class EnvAgent(BaseAgent):
     "network": {{"type": "bridge", "subnet": "网段"}}
 }}
 """
-        ai_response = self.ai_chat(prompt)
+        ai_response = self.ai_chat(prompt, task_type='range_generation')
         if ai_response:
             try:
                 config = json.loads(ai_response)
@@ -324,6 +324,95 @@ class EnvAgent(BaseAgent):
             {'id': key, **template}
             for key, template in self.SCENARIO_TEMPLATES.items()
         ]
+
+    def expand_scenario_variants(self, base_key: str) -> List[Dict]:
+        """
+        从基础场景自动扩展出多个变种（零代码）：
+          WAF变种、登录防护变种、内网横向变种、域控变种
+        若 AI 可用则让 AI 生成更多创意变种，否则使用规则模板。
+        """
+        base = self.SCENARIO_TEMPLATES.get(base_key)
+        if not base:
+            return []
+
+        # 规则模板变种
+        variants = [
+            self._make_variant(base, 'waf', '带WAF防护',
+                               extra_components=[{'type': 'container', 'name': 'waf', 'image': 'nginx:latest', 'ports': [8080]}],
+                               extra_vulns=['WAF绕过', 'HTTP走私'],
+                               desc_suffix='，前置部署WAF，验证规则绕过能力'),
+            self._make_variant(base, 'login', '带登录认证',
+                               extra_components=[{'type': 'container', 'name': 'auth-server', 'image': 'redis:alpine', 'ports': [6379]}],
+                               extra_vulns=['暴力破解', '会话固定', '弱口令'],
+                               desc_suffix='，增加登录认证环节，测试认证绕过'),
+            self._make_variant(base, 'internal', '带内网横向',
+                               extra_components=[
+                                   {'type': 'container', 'name': 'pivot-host', 'image': 'ubuntu:20.04', 'ports': [22]},
+                                   {'type': 'container', 'name': 'internal-db', 'image': 'mysql:5.7', 'ports': [3306]},
+                               ],
+                               extra_vulns=['内网扫描', '横向移动', '凭证窃取'],
+                               desc_suffix='，模拟内网环境，验证横向渗透防御'),
+            self._make_variant(base, 'domain', '带域控环境',
+                               extra_components=[
+                                   {'type': 'container', 'name': 'dc-server', 'image': 'ubuntu:20.04', 'ports': [389, 445, 88]},
+                               ],
+                               extra_vulns=['Pass-the-Hash', 'Kerberoasting', 'DCSync', '域提权'],
+                               desc_suffix='，模拟域控环境，验证AD安全防护'),
+        ]
+
+        # 若 AI 可用，追加一个AI创意变种
+        if self.llm.enabled:
+            try:
+                ai_variant = self._ai_expand_variant(base)
+                if ai_variant:
+                    variants.append(ai_variant)
+            except Exception as e:
+                pass
+
+        return variants
+
+    def _make_variant(self, base: dict, suffix: str, label: str,
+                      extra_components: list, extra_vulns: list, desc_suffix: str) -> dict:
+        import copy
+        v = copy.deepcopy(base)
+        v['id'] = f"{base.get('name', 'base').replace('靶场', '').strip()}_{suffix}"
+        v['name'] = f"{base['name']}（{label}）"
+        v['description'] = base['description'] + desc_suffix
+        v['components'] = v.get('components', []) + extra_components
+        v['vulnerabilities'] = list(set(v.get('vulnerabilities', []) + extra_vulns))
+        v['variant_label'] = label
+        v['is_variant'] = True
+        return v
+
+    def _ai_expand_variant(self, base: dict) -> dict:
+        """让AI生成一个创意变种"""
+        prompt = f"""基于以下网络安全靶场场景，生成一个有创意的变种靶场配置：
+
+原始场景：
+名称：{base['name']}
+描述：{base['description']}
+漏洞类型：{', '.join(base.get('vulnerabilities', []))}
+
+要求：
+1. 变种名称在原名称后加括号说明（如"（带云原生环境）"）
+2. 增加2-3个新组件
+3. 增加3-4个新漏洞类型
+4. 体现某种特定技术场景（云原生/物联网/移动端/供应链等）
+
+请返回纯JSON，格式同原始场景，额外加 "variant_label" 和 "is_variant": true 字段。
+"""
+        resp = self.ai_chat(prompt, task_type='scenario_expansion')
+        if resp and '{' in resp:
+            try:
+                import json
+                start = resp.find('{')
+                end = resp.rfind('}') + 1
+                v = json.loads(resp[start:end])
+                v['is_variant'] = True
+                return v
+            except Exception:
+                pass
+        return None
 
 
 # 全局实例 - 放在类定义之后

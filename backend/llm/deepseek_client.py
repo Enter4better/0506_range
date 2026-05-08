@@ -22,17 +22,27 @@ class DeepSeekClient:
         else:
             logger.warning("DeepSeek API Key 未配置，将使用模拟模式")
     
-    def chat(self, prompt: str, system_prompt: str = None, **kwargs) -> str:
-        """调用 DeepSeek 大模型"""
+    def chat(self, prompt: str, system_prompt: str = None, task_type: str = None, **kwargs) -> str:
+        """调用 DeepSeek 大模型，支持 task_type 自动路由模型参数"""
         if not self.enabled:
             return self._mock_response(prompt)
-        
+
+        # 从任务路由表获取参数，允许 kwargs 显式覆盖
+        route_cfg = {}
+        if task_type:
+            from llm.model_router import get_model_config
+            route_cfg = get_model_config(task_type)
+
+        use_model = kwargs.get('model', route_cfg.get('model', self.model))
+        use_temperature = kwargs.get('temperature', route_cfg.get('temperature', 0.3))
+        use_max_tokens = kwargs.get('max_tokens', route_cfg.get('max_tokens', 500))
+
         try:
             messages = []
             if system_prompt:
                 messages.append({"role": "system", "content": system_prompt})
             messages.append({"role": "user", "content": prompt})
-            
+
             response = requests.post(
                 f"{self.base_url}/chat/completions",
                 headers={
@@ -40,10 +50,10 @@ class DeepSeekClient:
                     "Content-Type": "application/json"
                 },
                 json={
-                    "model": self.model,
+                    "model": use_model,
                     "messages": messages,
-                    "temperature": kwargs.get('temperature', 0.3),
-                    "max_tokens": kwargs.get('max_tokens', 500)
+                    "temperature": use_temperature,
+                    "max_tokens": use_max_tokens
                 },
                 timeout=30
             )

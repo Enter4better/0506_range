@@ -155,7 +155,7 @@ class AttackAgent(BaseAgent):
 请用2-3句话简要分析这次攻击的技术细节、成功/失败原因，以及下一步建议。"""
 
         try:
-            analysis = self.ai_chat(prompt, temperature=0.8)
+            analysis = self.ai_chat(prompt, task_type='attack_analysis')
             return analysis.strip()
         except Exception as e:
             logger.warning(f"AI分析失败，使用默认分析: {e}")
