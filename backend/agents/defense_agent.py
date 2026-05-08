@@ -38,6 +38,29 @@ class DefenseAgent(BaseAgent):
         super().__init__()
         self.session_defense = {}  # {session_id: {'level': 1, 'blocked_ips': [], 'coverage': 50}}
         self.defense_logs = []
+        # 从数据库加载已启用的防御规则
+        self._loaded_rules = []
+        self._load_defense_rules()
+    
+    def _load_defense_rules(self):
+        """从数据库加载已启用的防御规则"""
+        try:
+            from models.defense import Defense
+            rules = Defense.list_all(enabled=1)
+            self._loaded_rules = rules
+            if rules:
+                logger.info(f"已加载 {len(rules)} 条防御规则")
+        except Exception as e:
+            logger.warning(f"加载防御规则失败: {e}")
+            self._loaded_rules = []
+    
+    def get_active_rules(self) -> list:
+        """获取当前生效的防御规则列表"""
+        return self._loaded_rules
+    
+    def refresh_rules(self):
+        """刷新防御规则（用户启用/禁用后调用）"""
+        self._load_defense_rules()
     
     @staticmethod
     def calculate_defense_intercept_rate(attack_phase: int, intensity: int, defense_level: int, coverage: float = 50.0) -> float:
@@ -108,9 +131,33 @@ class DefenseAgent(BaseAgent):
         
         current_level = session['level']
         
-        # 计算防御拦截率
+        # 计算防御拦截率（结合数据库中的防御规则）
         coverage = session.get('coverage', 50)
         intercept_rate = self.calculate_defense_intercept_rate(attack_phase, intensity, current_level, coverage)
+        
+        # 从数据库加载的防御规则中查找匹配当前攻击类型的规则，提升拦截率
+        matched_rules = []
+        for rule in self._loaded_rules:
+            rule_name = rule.name.lower() if rule.name else ''
+            rule_type = rule.defense_type.lower() if rule.defense_type else ''
+            attack_lower = attack_type.lower() if attack_type else ''
+            # 规则名称或类型与攻击类型匹配时生效
+            if (rule_name in attack_lower or attack_lower in rule_name or
+                rule_type in attack_lower or attack_lower in rule_type):
+                matched_rules.append(rule)
+        
+        # 每条匹配的规则提升 5%~15% 拦截率（取决于覆盖率）
+        rule_boost = 0
+        for rule in matched_rules:
+            rule_boost += 0.05 + (rule.coverage / 100.0) * 0.10
+        
+        # 即使没有精确匹配，已启用的规则也提供基础加成（每条 2%）
+        if not matched_rules and self._loaded_rules:
+            base_boost = len(self._loaded_rules) * 0.02
+            rule_boost = min(base_boost, 0.20)  # 最多 20%
+        
+        rule_boost = min(rule_boost, 0.40)  # 规则加成最多 40%
+        final_intercept_rate = min(0.95, intercept_rate + rule_boost)
         
         # 执行防御动作
         actions = self._execute_defense_actions(
@@ -120,6 +167,11 @@ class DefenseAgent(BaseAgent):
             session=session
         )
         
+        # 如果有匹配的规则，在动作中显示
+        if matched_rules:
+            for rule in matched_rules:
+                actions.insert(0, f"📋 规则生效: {rule.name} (覆盖率{rule.coverage}%)")
+        
         # 记录防御日志
         log_entry = {
             'timestamp': datetime.now().isoformat(),
@@ -127,10 +179,12 @@ class DefenseAgent(BaseAgent):
             'attack_phase': attack_phase,
             'defense_level': current_level,
             'level_name': self.DEFENSE_LEVELS[current_level]['name'],
-            'intercept_rate': intercept_rate,
+            'intercept_rate': round(final_intercept_rate, 3),
             'actions': actions,
             'source_ip': source_ip,
-            'session_id': session_id
+            'session_id': session_id,
+            'matched_rules': [r.name for r in matched_rules],
+            'active_rules_count': len(self._loaded_rules)
         }
         self.defense_logs.append(log_entry)
         
@@ -140,10 +194,12 @@ class DefenseAgent(BaseAgent):
             'attack_phase': attack_phase,
             'defense_level': current_level,
             'level_name': self.DEFENSE_LEVELS[current_level]['name'],
-            'intercept_rate': intercept_rate,
+            'intercept_rate': round(final_intercept_rate, 3),
             'actions_taken': actions,
             'blocked_ips': session['blocked_ips'],
-            'responded_at': datetime.now().isoformat()
+            'responded_at': datetime.now().isoformat(),
+            'matched_rules': [r.name for r in matched_rules],
+            'active_rules_count': len(self._loaded_rules)
         }
     
     def _execute_defense_actions(self, attack_type: str, defense_level: int, 

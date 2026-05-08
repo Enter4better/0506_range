@@ -149,9 +149,93 @@ def init_sample_data():
             },
             {
                 'name': '防火墙规则',
-                'defense_type': '防火墙',
+                'defense_type': 'Firewall',
                 'description': '控制网络流量，阻止未授权的访问',
                 'coverage': 90
+            },
+            {
+                'name': '文件上传检测',
+                'defense_type': 'WAF',
+                'description': '检测并阻止恶意文件上传，验证文件类型和内容',
+                'coverage': 86
+            },
+            {
+                'name': '命令注入防护',
+                'defense_type': 'IPS',
+                'description': '检测并阻止命令注入攻击，过滤系统命令执行',
+                'coverage': 82
+            },
+            {
+                'name': 'SSRF防护',
+                'defense_type': 'WAF',
+                'description': '防止服务端请求伪造，限制内网请求',
+                'coverage': 80
+            },
+            {
+                'name': '路径遍历检测',
+                'defense_type': 'IDS',
+                'description': '检测目录遍历攻击，监控异常文件访问模式',
+                'coverage': 88
+            },
+            {
+                'name': '反序列化防护',
+                'defense_type': 'WAF',
+                'description': '检测并阻止反序列化攻击，过滤恶意序列化数据',
+                'coverage': 75
+            },
+            {
+                'name': '容器逃逸检测',
+                'defense_type': 'EDR',
+                'description': '检测容器逃逸行为，监控容器内异常系统调用',
+                'coverage': 70
+            },
+            {
+                'name': '横向移动检测',
+                'defense_type': 'IDS',
+                'description': '检测内网横向移动行为，识别异常网络连接',
+                'coverage': 76
+            },
+            {
+                'name': '权限提升防护',
+                'defense_type': 'EDR',
+                'description': '检测并阻止权限提升攻击，监控特权操作',
+                'coverage': 72
+            },
+            {
+                'name': '数据泄露防护',
+                'defense_type': 'DLP',
+                'description': '防止敏感数据外泄，监控出站流量中的敏感信息',
+                'coverage': 68
+            },
+            {
+                'name': '蜜罐诱捕系统',
+                'defense_type': 'Honeypot',
+                'description': '部署蜜罐诱捕攻击者，收集攻击手法和工具信息',
+                'coverage': 60
+            },
+            {
+                'name': '身份认证审计',
+                'defense_type': 'IAM',
+                'description': '审计用户身份认证行为，检测异常登录和权限滥用',
+                'coverage': 84
+            },
+            {
+                'name': '漏洞扫描预警',
+                'defense_type': 'Vulnerability Scanner',
+                'description': '定期扫描系统漏洞，及时发现并预警安全风险',
+                'coverage': 90
+            },
+            {
+                'name': 'SIEM日志分析',
+                'defense_type': 'SIEM',
+                'description': '集中分析安全日志，关联多源告警发现高级威胁',
+                'coverage': 74
+            },
+            {
+                'name': '网络准入控制',
+                'defense_type': 'NAC',
+                'description': '控制设备接入网络，确保终端符合安全基线',
+                'coverage': 66
             }
         ]
         

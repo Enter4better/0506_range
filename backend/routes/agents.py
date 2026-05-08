@@ -229,6 +229,21 @@ def get_defense_logs():
         return jsonify({'status': 'error', 'msg': str(e)}), 500
 
 
+@agents_bp.route('/defense/refresh-rules', methods=['POST'])
+def refresh_defense_rules():
+    """刷新防御Agent的规则缓存（用户启用/禁用规则后调用）"""
+    try:
+        agent = get_defense_agent()
+        agent.refresh_rules()
+        return jsonify({
+            'status': 'success',
+            'msg': '防御规则已刷新',
+            'active_rules_count': len(agent._loaded_rules)
+        }), 200
+    except Exception as e:
+        return jsonify({'status': 'error', 'msg': str(e)}), 500
+
+
 # ==================== 编排器 API ====================
 
 @agents_bp.route('/scenario', methods=['POST'])
@@ -284,41 +299,91 @@ def destroy_session(session_id):
 
 @agents_bp.route('/sessions', methods=['GET'])
 def list_sessions():
-    """获取所有会话 - 优先从内存获取，同时从数据库补充"""
+    """获取所有会话 - 支持按 target_id 过滤，自动为靶场创建演练会话"""
     try:
+        target_id = request.args.get('target_id')
         orchestrator = get_orchestrator()
         sessions = []
         seen_ids = set()
         
         # 1. 从内存中的 orchestrator sessions 获取
         for sid, sess in orchestrator.sessions.items():
-            sessions.append({
+            session_info = {
                 'session_id': sid,
                 'environment': sess.get('environment', {}),
                 'status': sess.get('status', 'active'),
-                'created_at': sess.get('created_at')
-            })
+                'created_at': sess.get('created_at'),
+                'source': 'orchestrator'
+            }
+            # 如果指定了 target_id，只返回匹配的会话
+            if target_id:
+                env_name = sess.get('environment', {}).get('name', '')
+                if str(target_id) not in sid and str(target_id) not in env_name:
+                    continue
+            sessions.append(session_info)
             seen_ids.add(sid)
         
-        # 2. 从数据库 Target 表补充（用于报告页面展示）
+        # 2. 从 attacks 模块的 exercise_sessions 获取（通过攻击执行创建的会话）
         try:
-            from models.target import Target
-            targets = Target.list_all()
-            for t in targets:
-                tid = str(t.target_id) if t.target_id else None
-                if tid and tid not in seen_ids:
+            from routes.attacks import exercise_sessions, sessions_lock
+            with sessions_lock:
+                for sid, sess in exercise_sessions.items():
+                    if sid not in seen_ids:
+                        # 如果指定了 target_id，检查是否匹配
+                        if target_id:
+                            sess_target = sess.get('target', '')
+                            if str(target_id) != sess_target:
+                                continue
+                        sessions.append({
+                            'session_id': sid,
+                            'environment': {
+                                'name': f"{sess.get('attack_type', '攻击')} - {sess.get('target', '未知')}",
+                                'components': []
+                            },
+                            'status': sess.get('status', 'active'),
+                            'created_at': sess.get('created_at'),
+                            'source': 'attack'
+                        })
+                        seen_ids.add(sid)
+        except Exception as e:
+            current_app.logger.warning(f"从 attack sessions 获取失败: {e}")
+        
+        # 3. 如果指定了 target_id 但没有找到会话，自动创建一个与该靶场关联的演练会话
+        if target_id and not sessions:
+            try:
+                from models.target import Target
+                target = Target.get_by_id(int(target_id))
+                if target:
+                    session_id = f"session_{target_id}_{int(__import__('time').time())}"
+                    with orchestrator._lock:
+                        orchestrator.sessions[session_id] = {
+                            'session_id': session_id,
+                            'environment': {
+                                'name': target.name or f'靶场{target_id}',
+                                'components': []
+                            },
+                            'attacks': [],
+                            'decision_log': [],
+                            'status': 'active',
+                            'created_at': datetime.now().isoformat(),
+                            'current_intensity': 5,
+                            'difficulty_mode': 'single',
+                            'recent_intercept_rates': [],
+                            'env_adjustments': [],
+                        }
                     sessions.append({
-                        'session_id': tid,
+                        'session_id': session_id,
                         'environment': {
-                            'name': t.name or '靶场',
+                            'name': target.name or f'靶场{target_id}',
                             'components': []
                         },
-                        'status': t.status or 'unknown',
-                        'created_at': t.created_at or datetime.now().isoformat()
+                        'status': 'active',
+                        'created_at': datetime.now().isoformat(),
+                        'source': 'auto_created'
                     })
-                    seen_ids.add(tid)
-        except Exception as db_err:
-            current_app.logger.warning(f"从数据库补充会话失败: {db_err}")
+                    current_app.logger.info(f"为靶场 {target_id} 自动创建演练会话: {session_id}")
+            except Exception as e:
+                current_app.logger.warning(f"自动创建演练会话失败: {e}")
         
         return jsonify({'status': 'success', 'sessions': sessions})
     except Exception as e:

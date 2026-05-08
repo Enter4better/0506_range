@@ -46,6 +46,51 @@
       </el-table>
     </el-card>
 
+    <!-- 防御规则管理（从数据库加载，在攻防演练中实际生效） -->
+    <el-card class="tech-card" style="margin-top: 16px;">
+      <template #header>
+        <div class="card-header">
+          <span><el-icon>
+              <Umbrella />
+            </el-icon> 防御规则管理（{{ enabledRulesCount }}/{{ defenseRules.length }} 已启用）</span>
+          <div>
+            <el-button size="small" :icon="Refresh" @click="loadDefenseRules" :loading="loadingRules">刷新</el-button>
+          </div>
+        </div>
+      </template>
+      <el-table :data="defenseRules" stripe size="small" v-loading="loadingRules">
+        <el-table-column prop="name" label="规则名称" min-width="140" />
+        <el-table-column prop="defense_type" label="类型" width="100">
+          <template #default="{ row }">
+            <el-tag size="small">{{ row.defense_type }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="description" label="描述" min-width="160" />
+        <el-table-column prop="coverage" label="覆盖率" width="80">
+          <template #default="{ row }">
+            <span>{{ row.coverage }}%</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="enabled" label="状态" width="80">
+          <template #default="{ row }">
+            <el-switch :model-value="row.enabled" @change="toggleRule(row)" size="small" />
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="80">
+          <template #default="{ row }">
+            <el-button size="small" type="danger" :icon="Delete" circle @click="deleteRule(row)" />
+          </template>
+        </el-table-column>
+      </el-table>
+      <div v-if="!defenseRules.length && !loadingRules" class="empty-tip" style="padding: 20px;">
+        暂无防御规则，请在环境管理页面添加
+      </div>
+      <div style="margin-top: 8px; font-size: 12px; color: var(--text-muted);">
+        <el-tag size="small" type="success" style="margin-right: 4px;">💡</el-tag>
+        启用的规则会在攻防演练中自动生效，匹配攻击类型时提升拦截率
+      </div>
+    </el-card>
+
     <!-- 防御日志 -->
     <el-card class="tech-card" style="margin-top: 16px;">
       <template #header>
@@ -93,13 +138,16 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { Umbrella, Warning, Lock, DataLine, Timer, List, Document } from '@element-plus/icons-vue'
+import { Umbrella, Warning, Lock, DataLine, Timer, List, Document, Plus, Delete, Refresh } from '@element-plus/icons-vue'
 import StatCard from '@/components/StatCard.vue'
 import request from '@/utils/request'
+import { ElMessage, ElMessageBox } from 'element-plus'
 
 const defenseLogs = ref([])
 const activeBlocks = ref({})
 const stats = ref({ total_attacks: 0, defense_logs_count: 0 })
+const defenseRules = ref([])  // 从数据库加载的防御规则
+const loadingRules = ref(false)
 let refreshTimer = null
 
 // 防御策略表数据（与攻击类型完全同步，共16种）
@@ -129,6 +177,52 @@ const defenseTableData = [
 const activeBlocksCount = computed(() => Object.keys(activeBlocks.value).length)
 const attackTypesCount = computed(() => defenseTableData.length)
 const defenseLogsCount = computed(() => defenseLogs.value.length)
+const enabledRulesCount = computed(() => defenseRules.value.filter(r => r.enabled).length)
+
+// 从数据库加载防御规则
+async function loadDefenseRules() {
+  loadingRules.value = true
+  try {
+    const res = await request.get('/defense/list')
+    if (res.status === 'success') {
+      defenseRules.value = res.defenses || res.data || []
+    }
+  } catch (e) {
+    console.error('加载防御规则失败', e)
+  } finally {
+    loadingRules.value = false
+  }
+}
+
+// 切换防御规则启用/禁用
+async function toggleRule(rule) {
+  try {
+    const res = await request.post(`/defense/toggle/${rule.defense_id}`)
+    if (res.status === 'success') {
+      rule.enabled = !rule.enabled
+      ElMessage.success(res.message || `规则已${rule.enabled ? '启用' : '禁用'}`)
+      // 通知后端刷新防御Agent的规则缓存
+      await request.post('/agents/defense/refresh-rules')
+    }
+  } catch (e) {
+    ElMessage.error('切换失败')
+  }
+}
+
+// 删除防御规则
+async function deleteRule(rule) {
+  try {
+    await ElMessageBox.confirm(`确定要删除规则 "${rule.name}" 吗？`, '确认删除', { type: 'warning' })
+    const res = await request.delete(`/defense/delete/${rule.defense_id}`)
+    if (res.status === 'success') {
+      defenseRules.value = defenseRules.value.filter(r => r.defense_id !== rule.defense_id)
+      ElMessage.success('规则已删除')
+      await request.post('/agents/defense/refresh-rules')
+    }
+  } catch (e) {
+    if (e !== 'cancel') ElMessage.error('删除失败')
+  }
+}
 
 async function loadDefenseStatus() {
   try {
@@ -168,6 +262,7 @@ function formatTime(time) {
 onMounted(() => {
   loadDefenseStatus()
   loadDefenseLogs()
+  loadDefenseRules()
   // 每3秒自动刷新防御状态
   refreshTimer = setInterval(() => {
     loadDefenseStatus()

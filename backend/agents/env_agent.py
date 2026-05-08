@@ -157,7 +157,7 @@ class EnvAgent(BaseAgent):
             if short_name:
                 range_name = short_name + '靶场'
         
-        env_id = f"env_{int(time.time())}_{range_name[:20]}"
+        env_id = f"env_{int(__import__('time').time())}_{range_name[:20]}"
         
         result = {
             'status': 'pending',

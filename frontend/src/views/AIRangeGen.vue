@@ -135,8 +135,41 @@
                     </el-table-column>
                 </el-table>
 
+                <!-- 场景变种扩展 -->
+                <div class="section-title" style="margin-top: 16px;">
+                    <el-icon>
+                        <MagicStick />
+                    </el-icon> 场景变种扩展
+                    <el-tooltip content="从当前场景一键派生多种变种配置，快速切换不同攻防场景" placement="top">
+                        <el-icon style="margin-left: 4px; color: var(--text-muted); cursor: help;">
+                            <InfoFilled />
+                        </el-icon>
+                    </el-tooltip>
+                </div>
+                <div class="variant-buttons">
+                    <el-button v-for="(variant, idx) in variants" :key="idx" size="small"
+                        :type="selectedVariantIdx === idx ? 'primary' : 'default'" :icon="MagicStick"
+                        @click="applyVariant(variant, idx)" :loading="loadingVariant === idx">
+                        {{ variant.variant_label || variant.name }}
+                    </el-button>
+                    <el-button v-if="!variants.length && !loadingVariants" size="small" plain @click="loadVariants">
+                        <el-icon>
+                            <MagicStick />
+                        </el-icon> 加载变种
+                    </el-button>
+                    <el-button v-if="variants.length" size="small" plain @click="loadVariants"
+                        :loading="loadingVariants">
+                        <el-icon>
+                            <Refresh />
+                        </el-icon> 刷新
+                    </el-button>
+                </div>
+                <div v-if="selectedVariantDesc" class="variant-desc">
+                    <el-alert :title="selectedVariantDesc" type="info" :closable="false" show-icon size="small" />
+                </div>
+
                 <!-- 漏洞类型（可编辑） -->
-                <div class="section-title">
+                <div class="section-title" style="margin-top: 16px;">
                     <el-icon>
                         <Warning />
                     </el-icon> 漏洞类型
@@ -275,7 +308,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
     MagicStick, Edit, Cpu, View, Monitor, Warning,
-    CircleCheck, Upload, Back, Refresh, Aim, Loading, Plus, Check, Select
+    CircleCheck, Upload, Back, Refresh, Aim, Loading, Plus, Check, Select, InfoFilled
 } from '@element-plus/icons-vue'
 
 import request from '../utils/request'
@@ -451,6 +484,63 @@ function confirmAddVuln() {
 function removeVuln(idx) {
     if (!generatedConfig.value?.vulnerabilities) return
     generatedConfig.value.vulnerabilities.splice(idx, 1)
+}
+
+// 场景变种扩展
+const variants = ref([])
+const loadingVariants = ref(false)
+const loadingVariant = ref(-1)
+const selectedVariantIdx = ref(-1)
+const selectedVariantDesc = ref('')
+
+// 加载场景变种
+async function loadVariants() {
+    if (!generatedConfig.value) return
+    loadingVariants.value = true
+    try {
+        // 从当前配置推断基础场景类型
+        const comps = generatedConfig.value.components || []
+        let baseKey = 'web_security'
+        if (comps.some(c => c.name?.includes('firewall') || c.name?.includes('ids'))) {
+            baseKey = 'network_security'
+        } else if (comps.some(c => c.name?.includes('docker') || c.name?.includes('escape'))) {
+            baseKey = 'container_escape'
+        }
+        const res = await request.get('/agents/ai-range/expand-variants', {
+            params: { base: baseKey }
+        })
+        if (res.status === 'success') {
+            variants.value = res.variants || []
+            selectedVariantIdx.value = -1
+            selectedVariantDesc.value = ''
+            if (variants.value.length) {
+                ElMessage.success(`已加载 ${variants.value.length} 个场景变种`)
+            } else {
+                ElMessage.info('暂无可用变种')
+            }
+        }
+    } catch (e) {
+        ElMessage.error('加载变种失败: ' + (e.response?.data?.msg || e.message))
+    } finally {
+        loadingVariants.value = false
+    }
+}
+
+// 应用变种配置
+function applyVariant(variant, idx) {
+    if (!generatedConfig.value) return
+    selectedVariantIdx.value = idx
+    selectedVariantDesc.value = `已切换至「${variant.variant_label || variant.name}」- ${variant.description || ''}`
+    // 将变种配置应用到当前预览
+    generatedConfig.value = {
+        ...variant,
+        // 保留用户已编辑的漏洞（合并）
+        vulnerabilities: [...new Set([
+            ...(variant.vulnerabilities || []),
+            ...(generatedConfig.value.vulnerabilities || [])
+        ])]
+    }
+    ElMessage.success(`已应用变种: ${variant.variant_label || variant.name}`)
 }
 
 // 跳转
@@ -782,5 +872,17 @@ onMounted(() => {
     align-items: center;
     justify-content: center;
     min-height: 300px;
+}
+
+/* 场景变种扩展 */
+.variant-buttons {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+}
+
+.variant-desc {
+    margin-bottom: 8px;
 }
 </style>

@@ -230,11 +230,25 @@ async function loadTargets() {
   }
 }
 
-async function loadSessions() {
+async function loadSessions(targetId) {
   try {
-    const res = await request.get('/attack/sessions')
+    const params = {}
+    if (targetId) {
+      params.target_id = targetId
+    }
+    const res = await request.get('/agents/sessions', { params })
     if (res.status === 'success') {
-      sessions.value = res.sessions || []
+      sessions.value = (res.sessions || []).map(s => ({
+        session_id: s.session_id,
+        attack_type: s.environment?.name || s.status || '未知',
+        target: s.environment?.components?.join(', ') || '',
+        current_phase: 1,
+        defense_level: 1,
+        attacks_count: 0,
+        status: s.status || 'active',
+        created_at: s.created_at || '',
+        last_activity: s.created_at || ''
+      }))
     }
   } catch (e) {
     console.error('加载会话列表失败', e)
@@ -427,6 +441,8 @@ async function exportTopology() {
 
 function onTargetChange() {
   selectedSessionId.value = ''
+  // 选择靶场后加载该靶场关联的演练会话
+  loadSessions(selectedTargetId.value)
   loadTopology()
 }
 

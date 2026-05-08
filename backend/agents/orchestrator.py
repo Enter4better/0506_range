@@ -173,42 +173,69 @@ class Orchestrator:
 
     def _adapt_difficulty(self, session: Dict, defense_result: Dict) -> str:
         """
-        根据防御拦截率自适应调整攻击难度：
-          拦截率 > 70% 连续2次 → 升级为组合漏洞，强度+1
-          拦截率 < 30% 连续2次 → 降为单一攻击，强度-1
+        根据防御拦截率自适应调整攻击难度（平滑策略）：
+          采样窗口：最近10次拦截率
+          判断依据：取最近5次平均值，需连续3次满足条件才触发升降级
+          拦截率均值 > 70% → 升级为组合漏洞，强度+1
+          拦截率均值 < 30% → 降为单一攻击，强度-1
         """
         intercept_rate = defense_result.get('intercept_rate', 0.5)
         rates = session.setdefault('recent_intercept_rates', [])
         rates.append(intercept_rate)
-        if len(rates) > 5:
+        # 采样窗口扩大到10次
+        if len(rates) > 10:
             rates.pop(0)
 
-        if len(rates) < 2:
-            return '样本不足，保持当前难度'
+        # 需要至少5个样本才能做有效判断
+        if len(rates) < 5:
+            return f'样本不足({len(rates)}/5)，保持当前难度'
 
-        avg = sum(rates[-2:]) / 2
+        # 取最近5次平均值，平滑波动
+        window = rates[-5:]
+        avg = sum(window) / 5
+
         intensity = session.get('current_intensity', 5)
         old_mode = session.get('difficulty_mode', 'single')
         msg_parts = []
 
+        # 连续判断计数器：记录最近3次窗口均值是否持续偏高/偏低
+        trend = session.setdefault('_difficulty_trend', {'high': 0, 'low': 0})
+        
         if avg > 0.70:
+            trend['high'] += 1
+            trend['low'] = 0
+        elif avg < 0.30:
+            trend['low'] += 1
+            trend['high'] = 0
+        else:
+            trend['high'] = 0
+            trend['low'] = 0
+
+        # 需要连续3次都满足条件才触发升降级
+        if trend['high'] >= 3:
             session['difficulty_mode'] = 'combo'
             new_intensity = min(10, intensity + 1)
             session['current_intensity'] = new_intensity
+            trend['high'] = 0  # 重置计数器
             msg_parts.append(
-                f'防御拦截率={avg:.0%}>70%，升级为组合漏洞攻击'
+                f'防御拦截率均值={avg:.0%}>70%（连续3次），升级为组合漏洞攻击'
                 + (f'，强度 {intensity}→{new_intensity}' if new_intensity != intensity else '')
             )
-        elif avg < 0.30:
+        elif trend['low'] >= 3:
             session['difficulty_mode'] = 'single'
             new_intensity = max(1, intensity - 1)
             session['current_intensity'] = new_intensity
+            trend['low'] = 0  # 重置计数器
             msg_parts.append(
-                f'防御拦截率={avg:.0%}<30%，降为单一攻击保障训练效果'
+                f'防御拦截率均值={avg:.0%}<30%（连续3次），降为单一攻击保障训练效果'
                 + (f'，强度 {intensity}→{new_intensity}' if new_intensity != intensity else '')
             )
         else:
-            msg_parts.append(f'防御拦截率={avg:.0%}，难度维持（{old_mode}）')
+            status = '偏高' if avg > 0.70 else ('偏低' if avg < 0.30 else '正常')
+            msg_parts.append(
+                f'防御拦截率均值={avg:.0%}（{status}），'
+                f'连续{max(trend["high"], trend["low"])}次未达阈值，难度维持（{old_mode}）'
+            )
 
         return '；'.join(msg_parts)
 
