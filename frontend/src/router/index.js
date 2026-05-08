@@ -7,7 +7,6 @@ import {
   Document,
   Setting,
   MagicStick,
-  DataAnalysis,
 } from "@element-plus/icons-vue";
 
 const routes = [
@@ -43,11 +42,6 @@ const routes = [
     component: () => import("../views/AIRangeGen.vue"),
   },
   {
-    path: "/report",
-    name: "Report",
-    component: () => import("../views/ReportView.vue"),
-  },
-  {
     path: "/login",
     name: "Login",
     component: () => import("../views/Login.vue"),
@@ -64,7 +58,6 @@ export const navLinks = [
   { name: "防御", path: "/defense", icon: Umbrella },
   { name: "拓扑", path: "/topology", icon: Connection },
   { name: "日志", path: "/logs", icon: Document },
-  { name: "报告", path: "/report", icon: DataAnalysis },
 ];
 
 const router = createRouter({
