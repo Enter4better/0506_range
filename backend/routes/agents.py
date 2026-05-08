@@ -389,12 +389,17 @@ def ai_deploy_range():
 
         # 2. 直接用已部署的环境结果构建编排器会话，避免二次create_environment
         orchestrator = get_orchestrator()
-        session_id = result.get('environment_id', f"env_{int(__import__('time').time())}")
+        # 优先使用result中的environment_id，它已在create_environment中生成
+        session_id = result.get('environment_id')
+        if not session_id:
+            session_id = f"env_{int(__import__('time').time())}"
+        # 优先使用result中的name（已在create_environment中优化）
+        range_name = result.get('name') or config.get('name', '自定义靶场')
         session_info = {
             'status': 'success',
             'session_id': session_id,
             'environment': {
-                'name': result.get('name', config.get('name', '自定义靶场')),
+                'name': range_name,
                 'components': result.get('components', [])
             }
         }
@@ -413,7 +418,7 @@ def ai_deploy_range():
             }
 
         Log.create('success', 'env_agent',
-                  f"AI靶场部署成功: {config.get('name', '自定义靶场')} (环境ID: {result.get('environment_id')})",
+                  f"AI靶场部署成功: {range_name} (环境ID: {session_id})",
                   user_id=1)
 
         return jsonify({

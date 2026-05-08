@@ -146,17 +146,28 @@ class EnvAgent(BaseAgent):
         """创建靶场环境 - 真正调用Docker部署容器"""
         if user_id:
             self.user_id = user_id
-            
+        
+        # 从配置中提取靶场名称，优先使用AI生成的名称
+        range_name = scenario_config.get('name', '自定义靶场')
+        if range_name == '自定义靶场' and scenario_config.get('description'):
+            # 如果名称为默认值，尝试从描述中提取有意义的名称
+            desc = scenario_config['description']
+            # 取描述前12个字符作为名称
+            short_name = desc[:12].rstrip('，。、；：')
+            if short_name:
+                range_name = short_name + '靶场'
+        
+        env_id = f"env_{int(time.time())}_{range_name[:20]}"
+        
         result = {
             'status': 'pending',
-            'environment_id': None,
+            'environment_id': env_id,
             'components_created': [],
-            'errors': []
+            'errors': [],
+            'name': range_name
         }
         
         try:
-            env_id = f"env_{int(time.time())}_{scenario_config.get('name', 'custom')}"
-            result['environment_id'] = env_id
             
             Log.create('info', 'env_agent', 
                       f"环境管理Agent开始创建靶场: {scenario_config.get('name', '自定义靶场')}", 
@@ -284,7 +295,7 @@ class EnvAgent(BaseAgent):
                     all_ports.append(str(p))
             
             target = Target(
-                name=scenario_config.get('name', '自定义靶场'),
+                name=range_name,
                 type='container',
                 ip='127.0.0.1',
                 port=','.join(all_ports) if all_ports else '8080',
@@ -298,7 +309,7 @@ class EnvAgent(BaseAgent):
                 result['target_id'] = target.target_id
             
             result['status'] = 'running'
-            result['name'] = scenario_config.get('name', '自定义靶场')
+            result['name'] = range_name
             result['components'] = result['components_created']
             
             Log.create('success', 'env_agent', 
