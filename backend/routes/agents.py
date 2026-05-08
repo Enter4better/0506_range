@@ -284,10 +284,13 @@ def destroy_session(session_id):
 
 @agents_bp.route('/sessions', methods=['GET'])
 def list_sessions():
-    """获取所有会话"""
+    """获取所有会话 - 优先从内存获取，同时从数据库补充"""
     try:
         orchestrator = get_orchestrator()
         sessions = []
+        seen_ids = set()
+        
+        # 1. 从内存中的 orchestrator sessions 获取
         for sid, sess in orchestrator.sessions.items():
             sessions.append({
                 'session_id': sid,
@@ -295,6 +298,28 @@ def list_sessions():
                 'status': sess.get('status', 'active'),
                 'created_at': sess.get('created_at')
             })
+            seen_ids.add(sid)
+        
+        # 2. 从数据库 Target 表补充（用于报告页面展示）
+        try:
+            from models.target import Target
+            targets = Target.list_all()
+            for t in targets:
+                tid = str(t.target_id) if t.target_id else None
+                if tid and tid not in seen_ids:
+                    sessions.append({
+                        'session_id': tid,
+                        'environment': {
+                            'name': t.name or '靶场',
+                            'components': []
+                        },
+                        'status': t.status or 'unknown',
+                        'created_at': t.created_at or datetime.now().isoformat()
+                    })
+                    seen_ids.add(tid)
+        except Exception as db_err:
+            current_app.logger.warning(f"从数据库补充会话失败: {db_err}")
+        
         return jsonify({'status': 'success', 'sessions': sessions})
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
