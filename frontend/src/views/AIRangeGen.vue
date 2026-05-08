@@ -91,7 +91,7 @@
                 </div>
             </template>
 
-            <div v-if="generatedConfig" class="preview-section">
+            <div v-if="generatedConfig && generatedConfig.components" class="preview-section">
                 <!-- 基本信息 -->
                 <el-descriptions title="基本信息" :column="2" border size="small" class="config-descriptions">
                     <el-descriptions-item label="靶场名称" label-class-name="desc-label">
@@ -171,6 +171,15 @@
                 </div>
 
             </div>
+
+            <!-- 生成失败兜底 -->
+            <div v-else class="gen-failed-section">
+                <el-empty description="配置生成失败，请返回重新描述靶场需求" :image-size="80">
+                    <el-button type="primary" @click="currentStep = 0; generatedConfig = null">
+                        <el-icon><Back /></el-icon> 返回重新生成
+                    </el-button>
+                </el-empty>
+            </div>
         </el-card>
 
         <!-- 步骤4: 部署完成 -->
@@ -227,30 +236,27 @@
     </div>
 
     <!-- 添加漏洞弹窗 -->
-    <el-dialog v-model="vulnDialogVisible" title="添加漏洞类型" width="480px" class="tech-dialog"
+    <el-dialog v-model="vulnDialogVisible" title="选择漏洞类型" width="520px" class="tech-dialog"
         :close-on-click-modal="false" align-center>
         <div class="vuln-dialog-body">
-            <div class="vuln-input-row">
-                <el-input v-model="newVulnInput" placeholder="输入漏洞名称，如：SQL注入、XXE、SSRF..."
-                    maxlength="40" show-word-limit clearable @keyup.enter="confirmAddVuln"
-                    class="vuln-input" />
+            <div class="preset-label">
+                点击选择（已选 <span class="select-count">{{ pendingVulns.length }}</span> 项），再次点击取消选择
             </div>
-            <div class="vuln-presets">
-                <div class="preset-label">常见漏洞快速选择：</div>
-                <div class="preset-grid">
-                    <el-tag v-for="preset in vulnPresets" :key="preset"
-                        class="preset-tag" size="small" type="danger"
-                        @click="newVulnInput = preset">
-                        {{ preset }}
-                    </el-tag>
+            <div class="preset-grid">
+                <div v-for="preset in vulnPresets" :key="preset"
+                    class="preset-tag" :class="{ selected: pendingVulns.includes(preset), disabled: alreadyHasVuln(preset) }"
+                    @click="togglePendingVuln(preset)">
+                    <el-icon v-if="pendingVulns.includes(preset)" class="check-icon"><Check /></el-icon>
+                    <el-icon v-else-if="alreadyHasVuln(preset)" class="check-icon added-icon"><Select /></el-icon>
+                    {{ preset }}
                 </div>
             </div>
         </div>
         <template #footer>
             <div class="dialog-footer">
                 <el-button @click="vulnDialogVisible = false">取消</el-button>
-                <el-button type="danger" @click="confirmAddVuln" :disabled="!newVulnInput.trim()">
-                    <el-icon><Plus /></el-icon> 确认添加
+                <el-button type="danger" @click="confirmAddVuln" :disabled="pendingVulns.length === 0">
+                    <el-icon><Plus /></el-icon> 添加已选 ({{ pendingVulns.length }})
                 </el-button>
             </div>
         </template>
@@ -263,7 +269,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import {
     MagicStick, Edit, Cpu, View, Monitor, Warning,
-    CircleCheck, Upload, Back, Refresh, Aim, Loading, Plus
+    CircleCheck, Upload, Back, Refresh, Aim, Loading, Plus, Check, Select
 } from '@element-plus/icons-vue'
 
 import request from '../utils/request'
@@ -283,12 +289,13 @@ const templates = ref([])
 
 // 漏洞弹窗
 const vulnDialogVisible = ref(false)
-const newVulnInput = ref('')
+const pendingVulns = ref([])   // 本次弹窗中待添加的选中项
 const vulnPresets = [
     'SQL注入', 'XSS跨站脚本', 'CSRF', 'XXE',
     'SSRF', '文件上传', '命令注入', '目录遍历',
     '反序列化', '弱口令', '越权访问', '缓冲区溢出',
-    '容器逃逸', '暴力破解', '中间人攻击', 'IDOR'
+    '容器逃逸', '暴力破解', '中间人攻击', 'IDOR',
+    '路径遍历', '业务逻辑漏洞', 'JWT伪造', 'DNS重绑定'
 ]
 
 // 加载场景模板
@@ -399,22 +406,39 @@ function resetAll() {
 // 打开漏洞弹窗
 function openVulnDialog() {
     if (!generatedConfig.value) return
-    newVulnInput.value = ''
+    pendingVulns.value = []
     vulnDialogVisible.value = true
+}
+
+// 判断某漏洞是否已在配置中
+function alreadyHasVuln(name) {
+    return (generatedConfig.value?.vulnerabilities || []).includes(name)
+}
+
+// 切换待选状态
+function togglePendingVuln(name) {
+    if (alreadyHasVuln(name)) return  // 已有的不可重复选
+    const idx = pendingVulns.value.indexOf(name)
+    if (idx >= 0) {
+        pendingVulns.value.splice(idx, 1)
+    } else {
+        pendingVulns.value.push(name)
+    }
 }
 
 // 确认添加漏洞
 function confirmAddVuln() {
-    const v = newVulnInput.value.trim()
-    if (!v) return
+    if (!generatedConfig.value) return
     if (!generatedConfig.value.vulnerabilities) {
         generatedConfig.value.vulnerabilities = []
     }
-    if (!generatedConfig.value.vulnerabilities.includes(v)) {
-        generatedConfig.value.vulnerabilities.push(v)
+    for (const v of pendingVulns.value) {
+        if (!generatedConfig.value.vulnerabilities.includes(v)) {
+            generatedConfig.value.vulnerabilities.push(v)
+        }
     }
     vulnDialogVisible.value = false
-    newVulnInput.value = ''
+    pendingVulns.value = []
 }
 
 // 删除漏洞
@@ -671,45 +695,72 @@ onMounted(() => {
 .vuln-dialog-body {
     padding: 4px 0;
 }
-.vuln-input-row {
-    margin-bottom: 18px;
-}
-.vuln-input :deep(.el-input__wrapper) {
-    background: rgba(8, 10, 20, 0.7);
-    border-color: rgba(80, 144, 160, 0.3);
-    box-shadow: none;
-}
-.vuln-input :deep(.el-input__inner) {
-    color: #f0f2f8;
-}
-.vuln-input :deep(.el-input__wrapper:hover),
-.vuln-input :deep(.el-input__wrapper.is-focus) {
-    border-color: #5090a0 !important;
-    box-shadow: 0 0 0 1px rgba(80, 144, 160, 0.25) !important;
-}
 .preset-label {
     font-size: 12px;
     color: var(--text-muted);
-    margin-bottom: 10px;
+    margin-bottom: 12px;
+    line-height: 1.5;
+}
+.select-count {
+    color: #a04050;
+    font-weight: 700;
 }
 .preset-grid {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 7px;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
 }
 .preset-tag {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 7px 4px;
+    font-size: 12px;
+    border-radius: 7px;
+    border: 1px solid rgba(80, 70, 120, 0.25);
+    background: rgba(8, 10, 20, 0.5);
+    color: var(--text-secondary);
     cursor: pointer;
     transition: all 0.15s;
     user-select: none;
+    text-align: center;
 }
-.preset-tag:hover {
+.preset-tag:hover:not(.disabled) {
+    border-color: rgba(160, 64, 80, 0.5);
+    background: rgba(160, 64, 80, 0.1);
+    color: #d06070;
     transform: translateY(-1px);
-    box-shadow: 0 2px 8px rgba(160, 64, 80, 0.35);
-    opacity: 0.85;
+}
+.preset-tag.selected {
+    border-color: #a04050;
+    background: rgba(160, 64, 80, 0.2);
+    color: #d06070;
+    box-shadow: 0 0 8px rgba(160, 64, 80, 0.25);
+}
+.preset-tag.disabled {
+    border-color: rgba(64, 160, 96, 0.3);
+    background: rgba(64, 160, 96, 0.08);
+    color: #50a070;
+    cursor: not-allowed;
+    opacity: 0.7;
+}
+.check-icon {
+    font-size: 11px;
+    flex-shrink: 0;
+}
+.added-icon {
+    color: #50a070;
 }
 .dialog-footer {
     display: flex;
     justify-content: flex-end;
     gap: 10px;
+}
+.gen-failed-section {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 300px;
 }
 </style>
