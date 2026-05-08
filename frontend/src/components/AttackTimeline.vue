@@ -44,18 +44,26 @@
         </div>
       </el-timeline-item>
     </el-timeline>
-    <!-- 分页 -->
+    <!-- 分页（超过1页时显示） -->
     <div class="pagination-wrapper" v-if="total > pageSize">
-      <el-pagination v-model:current-page="currentPage" v-model:page-size="pageSize" :total="total"
-        layout="prev, pager, next" small background @change="onPageChange" />
+      <span class="page-total">共 {{ total }} 条</span>
+      <el-pagination
+        v-model:current-page="currentPage"
+        :page-size="pageSize"
+        :total="total"
+        :pager-count="5"
+        layout="prev, pager, next, jumper"
+        small
+        background
+        @current-change="onPageChange"
+      />
     </div>
   </el-card>
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { Timer, Refresh, Document, Location, Aim } from '@element-plus/icons-vue'
-import request from '@/utils/request'
 
 const props = defineProps({
   logs: { type: Array, default: () => [] },
@@ -67,8 +75,16 @@ const emit = defineEmits(['refresh', 'page-change'])
 const currentPage = ref(1)
 const pageSize = ref(10)
 
+// total 减少时（如刷新后记录数变少），回到第1页避免空页
+watch(() => props.total, (newTotal) => {
+  const maxPage = Math.ceil(newTotal / pageSize.value) || 1
+  if (currentPage.value > maxPage) {
+    currentPage.value = 1
+    emit('page-change', 1)
+  }
+})
+
 function onPageChange(page) {
-  currentPage.value = page
   emit('page-change', page)
 }
 
@@ -188,9 +204,16 @@ function formatTime(time) {
 
 .pagination-wrapper {
   display: flex;
-  justify-content: center;
+  align-items: center;
+  justify-content: space-between;
   padding-top: 12px;
   margin-top: 8px;
   border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.page-total {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
 }
 </style>
