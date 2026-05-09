@@ -330,7 +330,16 @@ async function deleteTarget(target) {
     const res = await request.post(`/env/delete/${id}`)
     if (res.status === 'success') {
       ElMessage.success(`靶场已删除: ${target.name}`)
-      await fetchTargets()
+      // 立即从本地列表中移除，避免等待后端刷新
+      const index = targets.value.findIndex(t => 
+        (t.id || t.target_id || t.name) === id || t.name === target.name
+      )
+      if (index !== -1) {
+        targets.value.splice(index, 1)
+        updateStats()
+      }
+      // 同时刷新后端数据确保同步
+      setTimeout(() => fetchTargets(), 500)
     } else {
       ElMessage.error(res.msg || '删除失败')
     }

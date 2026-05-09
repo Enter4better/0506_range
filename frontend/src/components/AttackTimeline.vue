@@ -44,15 +44,15 @@
         </div>
       </el-timeline-item>
     </el-timeline>
-    <!-- 分页（超过1页时显示） -->
-    <div class="pagination-wrapper" v-if="total > pageSize">
-      <span class="page-total">共 {{ total }} 条</span>
+    <!-- 分页（始终显示，让用户知道有多少记录） -->
+    <div class="pagination-wrapper" v-if="total > 0">
+      <span class="page-total">共 {{ total }} 条记录，当前第 {{ currentPage }} 页</span>
       <el-pagination
         v-model:current-page="currentPage"
         :page-size="pageSize"
         :total="total"
         :pager-count="5"
-        layout="prev, pager, next, jumper"
+        layout="prev, pager, next"
         small
         background
         @current-change="onPageChange"
