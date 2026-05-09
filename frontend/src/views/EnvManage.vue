@@ -167,8 +167,9 @@
               <el-option label="PostgreSQL" value="postgres:15-alpine" />
             </el-option-group>
             <el-option-group label="漏洞靶场">
-              <el-option label="DVWA (漏洞靶场)" value="dvwa" />
+              <el-option label="DVWA (漏洞靶场)" value="vulnerables/web-dvwa" />
               <el-option label="WebGoat" value="webgoat/webgoat" />
+              <el-option label="BWAPP (漏洞靶场)" value="raesene/bwapp" />
             </el-option-group>
             <el-option-group label="系统环境">
               <el-option label="Ubuntu 22.04" value="ubuntu:22.04" />
