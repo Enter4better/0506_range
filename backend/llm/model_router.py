@@ -25,16 +25,16 @@ TASK_ROUTE_MAP = {
     # 自然语言理解：用户输入解析、场景描述分析
     'nlp_understanding': {
         'model': os.getenv('MODEL_NLP', 'deepseek-chat'),
-        'temperature': 0.3,
-        'max_tokens': 800,
-        'description': '自然语言理解 - 通用大模型，中等确定性'
+        'temperature': 0.2,   # 降低温度，提升语义解析稳定性
+        'max_tokens': 1000,
+        'description': '自然语言理解 - 低温度，语义解析稳定性优先'
     },
-    # 靶场/环境配置生成：输出JSON，需要高精确度
+    # 靶场/环境配置生成：输出完整JSON，需要高精确度和足够上下文
     'range_generation': {
         'model': os.getenv('MODEL_CODEGEN', 'deepseek-chat'),
-        'temperature': 0.15,
-        'max_tokens': 1200,
-        'description': '配置生成 - 低温度，结构化JSON输出'
+        'temperature': 0.1,   # 极低温度，JSON结构输出确定性最高
+        'max_tokens': 2500,   # 足够生成含多组件的完整配置JSON
+        'description': '配置生成 - 极低温度，完整JSON结构输出'
     },
     # 攻击规划：需要创造性和多样性
     'attack_planning': {

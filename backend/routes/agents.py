@@ -511,6 +511,14 @@ def ai_deploy_range():
                   f"AI靶场部署成功: {range_name} (环境ID: {session_id})",
                   user_id=1)
 
+        # 部署成功后自动保存为训练样本（提升下次 AI 语义解析质量）
+        try:
+            original_desc = data.get('original_desc', '') or config.get('description', '')
+            if original_desc:
+                env_agent.save_training_example(original_desc, config)
+        except Exception:
+            pass
+
         return jsonify({
             'status': 'success',
             'result': result,
@@ -532,6 +540,25 @@ def ai_expand_variants():
         env_agent = get_env_agent(1)
         variants = env_agent.expand_scenario_variants(base_key)
         return jsonify({'status': 'success', 'variants': variants, 'base_key': base_key}), 200
+    except Exception as e:
+        return jsonify({'status': 'error', 'msg': str(e)}), 500
+
+
+@agents_bp.route('/ai-range/feedback', methods=['POST'])
+def ai_range_feedback():
+    """保存用户确认的成功配置为 few-shot 训练样本（可训练机制）"""
+    try:
+        data = request.get_json(silent=True) or {}
+        user_input = data.get('input', '').strip()
+        config = data.get('config', {})
+        if not user_input or not config:
+            return jsonify({'status': 'error', 'msg': '需要提供 input 和 config'}), 400
+        env_agent = get_env_agent(1)
+        saved = env_agent.save_training_example(user_input, config)
+        return jsonify({
+            'status': 'success' if saved else 'error',
+            'msg': '训练样本已保存' if saved else '保存失败'
+        }), 200
     except Exception as e:
         return jsonify({'status': 'error', 'msg': str(e)}), 500
 

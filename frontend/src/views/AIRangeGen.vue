@@ -407,7 +407,8 @@ async function deployRange() {
 
     try {
         const res = await request.post('/agents/ai-range/deploy', {
-            config: generatedConfig.value
+            config: generatedConfig.value,
+            original_desc: scenarioDesc.value
         })
 
         if (res.status === 'success') {

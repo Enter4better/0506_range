@@ -5,7 +5,6 @@
 import os
 import json
 import time
-import subprocess
 import threading
 from datetime import datetime
 from typing import Dict, List, Optional, Any
@@ -17,148 +16,280 @@ from .base_agent import BaseAgent
 from models.log import Log
 from models.target import Target
 
+# 训练样本文件路径（few-shot 示例存储）
+_TRAINING_FILE = Path(__file__).parent / 'training_examples.json'
+
+# 经过验证的可用镜像白名单及其必要配置
+VERIFIED_IMAGES = {
+    'nginx:alpine':      {'env': {}, 'command': None, 'ports': [80]},
+    'httpd:alpine':      {'env': {}, 'command': None, 'ports': [80]},
+    'php:8.1-apache':    {'env': {}, 'command': None, 'ports': [80]},
+    'mysql:8.0':         {'env': {'MYSQL_ROOT_PASSWORD': 'Range@123', 'MYSQL_DATABASE': 'testdb'}, 'command': None, 'ports': [3306]},
+    'redis:alpine':      {'env': {}, 'command': None, 'ports': [6379]},
+    'postgres:15-alpine':{'env': {'POSTGRES_PASSWORD': 'Range@123'}, 'command': None, 'ports': [5432]},
+    'ubuntu:22.04':      {'env': {}, 'command': 'sleep infinity', 'ports': [22]},
+    'python:3.11-slim':  {'env': {}, 'command': 'sleep infinity', 'ports': []},
+    'node:18-alpine':    {'env': {}, 'command': 'sleep infinity', 'ports': [3000]},
+    'alpine:latest':     {'env': {}, 'command': 'sleep infinity', 'ports': []},
+}
+
 
 class EnvAgent(BaseAgent):
     """环境管理Agent - AI驱动的靶场资源编排"""
-    
-    # 预定义场景模板
+
+    # 预定义场景模板（使用经过验证的镜像）
     SCENARIO_TEMPLATES = {
         'web_security': {
             'name': 'Web安全靶场',
-            'description': '包含Web服务器、数据库的典型Web应用环境',
+            'description': '包含Nginx和MySQL的典型Web应用环境',
             'components': [
-                {'type': 'container', 'name': 'web-server', 'image': 'nginx:latest', 'ports': [80, 443]},
-                {'type': 'container', 'name': 'db-server', 'image': 'mysql:5.7', 'ports': [3306]},
+                {'type': 'container', 'name': 'web-server',  'image': 'nginx:alpine',
+                 'ports': [80],   'env': {}, 'command': None},
+                {'type': 'container', 'name': 'db-server',   'image': 'mysql:8.0',
+                 'ports': [3306], 'env': {'MYSQL_ROOT_PASSWORD': 'Range@123', 'MYSQL_DATABASE': 'testdb'}, 'command': None},
             ],
-            'vulnerabilities': ['SQL注入', 'XSS', '文件上传'],
+            'vulnerabilities': ['SQL注入', 'XSS跨站脚本', '文件上传'],
             'network': {'type': 'bridge', 'subnet': '172.20.0.0/16'}
         },
         'network_security': {
             'name': '网络安全靶场',
-            'description': '包含多种网络设备和服务的复杂网络环境',
+            'description': '包含Web服务和内网主机的网络渗透环境',
             'components': [
-                {'type': 'container', 'name': 'firewall', 'image': 'iptables-demo', 'ports': [22, 80]},
-                {'type': 'container', 'name': 'ids', 'image': 'snort:latest', 'ports': [9090]},
-                {'type': 'container', 'name': 'target-host', 'image': 'ubuntu:20.04', 'ports': [22, 80, 443]}
+                {'type': 'container', 'name': 'web-target',  'image': 'nginx:alpine',
+                 'ports': [80],   'env': {}, 'command': None},
+                {'type': 'container', 'name': 'target-host', 'image': 'ubuntu:22.04',
+                 'ports': [22],   'env': {}, 'command': 'sleep infinity'},
+                {'type': 'container', 'name': 'db-target',   'image': 'mysql:8.0',
+                 'ports': [3306], 'env': {'MYSQL_ROOT_PASSWORD': 'Range@123'}, 'command': None},
             ],
-            'vulnerabilities': ['端口扫描', '暴力破解', '中间人攻击'],
+            'vulnerabilities': ['端口扫描', '暴力破解', '横向移动'],
             'network': {'type': 'custom', 'subnet': '172.21.0.0/16'}
         },
         'container_escape': {
-            'name': '容器逃逸靶场',
-            'description': '模拟容器环境，用于容器安全研究',
+            'name': '容器安全靶场',
+            'description': '模拟容器隔离环境，用于容器安全研究',
             'components': [
-                {'type': 'container', 'name': 'docker-host', 'image': 'docker:dind', 'ports': [2375]},
-                {'type': 'container', 'name': 'victim-container', 'image': 'alpine:latest', 'ports': [22]}
+                {'type': 'container', 'name': 'alpine-target', 'image': 'alpine:latest',
+                 'ports': [], 'env': {}, 'command': 'sleep infinity'},
+                {'type': 'container', 'name': 'ubuntu-victim', 'image': 'ubuntu:22.04',
+                 'ports': [22], 'env': {}, 'command': 'sleep infinity'},
             ],
-            'vulnerabilities': ['容器逃逸', '特权容器滥用', '镜像漏洞'],
+            'vulnerabilities': ['容器逃逸', '镜像漏洞', '特权容器滥用'],
             'network': {'type': 'bridge', 'subnet': '172.22.0.0/16'}
         }
     }
-    
+
     def __init__(self, user_id: str = None):
         super().__init__()
         self.user_id = user_id
         self._lock = threading.Lock()
-    
+
+    # ==================== 训练样本（few-shot）====================
+
+    def load_training_examples(self) -> List[Dict]:
+        """加载训练样本用于 few-shot 提示"""
+        try:
+            if _TRAINING_FILE.exists():
+                with open(_TRAINING_FILE, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+        except Exception as e:
+            current_app.logger.warning(f"加载训练样本失败: {e}")
+        return []
+
+    def save_training_example(self, user_input: str, config: Dict) -> bool:
+        """保存成功的配置为 few-shot 训练样本"""
+        try:
+            examples = self.load_training_examples()
+            # 避免重复（按 input 去重）
+            examples = [e for e in examples if e.get('input') != user_input]
+            examples.append({
+                'input': user_input,
+                'output': config,
+                'timestamp': datetime.now().isoformat()
+            })
+            # 只保留最近 20 条
+            examples = examples[-20:]
+            with open(_TRAINING_FILE, 'w', encoding='utf-8') as f:
+                json.dump(examples, f, ensure_ascii=False, indent=2)
+            return True
+        except Exception as e:
+            current_app.logger.warning(f"保存训练样本失败: {e}")
+            return False
+
+    def _find_relevant_examples(self, desc: str, max_count: int = 2) -> List[Dict]:
+        """根据关键词相似度找到最相关的 few-shot 样本"""
+        examples = self.load_training_examples()
+        if not examples:
+            return []
+        desc_words = set(desc.lower().replace('，', ' ').replace('。', ' ').split())
+        scored = []
+        for ex in examples:
+            ex_words = set(ex.get('input', '').lower().replace('，', ' ').replace('。', ' ').split())
+            score = len(desc_words & ex_words)
+            scored.append((score, ex))
+        scored.sort(key=lambda x: -x[0])
+        return [ex for _, ex in scored[:max_count] if _ > 0]
+
+    # ==================== 场景分析 ====================
+
     def analyze_scenario(self, scenario_desc: str) -> Dict:
         """分析场景描述，生成环境配置方案"""
-        # 首先尝试匹配预定义模板
+        # 先尝试匹配预定义模板（关键词匹配）
         matched_template = None
-        for key, template in self.SCENARIO_TEMPLATES.items():
-            if any(keyword in scenario_desc.lower() for keyword in 
-                   [key, template['name'], template['description']]):
-                matched_template = template
+        keywords_map = {
+            'web_security':    ['web', 'nginx', 'apache', '网站', '数据库', 'sql', 'xss', 'web安全'],
+            'network_security': ['网络', '内网', '横向', '渗透', 'ssh', '主机', '端口'],
+            'container_escape': ['容器', 'docker', '逃逸', 'k8s', '云原生'],
+        }
+        desc_lower = scenario_desc.lower()
+        for key, kws in keywords_map.items():
+            if any(kw in desc_lower for kw in kws):
+                matched_template = self.SCENARIO_TEMPLATES[key].copy()
                 break
-        
+
         if matched_template:
-            base_config = matched_template.copy()
+            base_config = json.loads(json.dumps(matched_template))  # deepcopy
         else:
-            # 使用 AI 生成自定义配置
             base_config = self._generate_custom_scenario(scenario_desc)
-        
-        # 使用 AI 优化配置
-        if self.llm.enabled:
-            optimization_prompt = f"""
-作为环境管理Agent，请分析以下靶场场景需求并优化配置：
 
-场景描述：{scenario_desc}
+        # 用 AI 优化配置（如果 AI 可用）
+        if self.llm.enabled and base_config:
+            optimized = self._ai_optimize_config(scenario_desc, base_config)
+            if optimized:
+                base_config = optimized
 
-基础配置：
+        return base_config
+
+    def _ai_optimize_config(self, desc: str, base_config: Dict) -> Optional[Dict]:
+        """让 AI 在现有配置基础上做小幅优化（不重新生成，只调整漏洞和描述）"""
+        prompt = f"""根据用户需求，优化以下靶场配置的 name、description 和 vulnerabilities 字段。
+不要修改 components（镜像列表），只修改元信息。
+
+用户需求：{desc}
+
+现有配置：
 {json.dumps(base_config, ensure_ascii=False, indent=2)}
 
-请从以下方面进行优化：
-1. 资源分配合理性
-2. 网络拓扑安全性
-3. 漏洞配置真实性
-
-请返回优化后的JSON配置，保持原有结构。
+请只返回 JSON，包含 name、description、vulnerabilities 三个字段，其他字段不返回。
 """
-            ai_response = self.ai_chat(optimization_prompt, task_type='range_generation')
-            if ai_response:
-                try:
-                    optimized = json.loads(ai_response)
-                    if isinstance(optimized, dict):
-                        base_config.update(optimized)
-                except:
-                    pass
-        
-        return base_config
-    
-    def _generate_custom_scenario(self, scenario_desc: str) -> Dict:
-        """使用 AI 生成自定义场景配置"""
-        prompt = f"""
-作为环境管理Agent，请根据以下场景描述生成靶场配置JSON：
-
-场景描述：{scenario_desc}
-
-请返回包含以下字段的JSON：
-{{
-    "name": "靶场名称",
-    "description": "详细描述",
-    "components": [
-        {{"type": "container", "name": "服务名", "image": "镜像名", "ports": [端口列表]}}
-    ],
-    "vulnerabilities": ["漏洞类型列表"],
-    "network": {{"type": "bridge", "subnet": "网段"}}
-}}
-"""
-        ai_response = self.ai_chat(prompt, task_type='range_generation')
-        if ai_response:
+        resp = self.ai_chat(prompt, task_type='nlp_understanding')
+        if resp and '{' in resp:
             try:
-                config = json.loads(ai_response)
-                if isinstance(config, dict) and 'components' in config:
-                    return config
-            except:
+                start, end = resp.find('{'), resp.rfind('}') + 1
+                patch = json.loads(resp[start:end])
+                if isinstance(patch, dict):
+                    result = json.loads(json.dumps(base_config))
+                    for k in ('name', 'description', 'vulnerabilities'):
+                        if k in patch and patch[k]:
+                            result[k] = patch[k]
+                    return result
+            except Exception:
                 pass
-        
+        return None
+
+    def _generate_custom_scenario(self, scenario_desc: str) -> Dict:
+        """使用 AI 生成自定义场景配置，附带 few-shot 示例"""
+        # 构建 few-shot 示例部分
+        examples = self._find_relevant_examples(scenario_desc)
+        few_shot_text = ''
+        if examples:
+            few_shot_text = '\n\n【成功案例参考（请参照格式，不要照抄内容）】\n'
+            for i, ex in enumerate(examples, 1):
+                few_shot_text += f"\n示例{i}（需求：{ex['input']}）：\n"
+                few_shot_text += json.dumps(ex['output'], ensure_ascii=False, indent=2) + '\n'
+
+        # 镜像白名单说明
+        image_guide = '\n'.join([
+            f'  - {img}: 端口{info["ports"]}'
+            + (f'，需env {list(info["env"].keys())}' if info['env'] else '')
+            + (f'，需command "{info["command"]}"' if info['command'] else '')
+            for img, info in VERIFIED_IMAGES.items()
+        ])
+
+        prompt = f"""你是一个Docker靶场配置专家。根据以下用户需求，生成一个可以立即部署的Docker靶场配置。
+{few_shot_text}
+【用户需求】：{scenario_desc}
+
+【可用镜像白名单】（只能从下面选，不能使用其他镜像）：
+{image_guide}
+
+【重要规则】：
+1. ubuntu:22.04、python:3.11-slim、node:18-alpine、alpine:latest 必须设置 command 为 "sleep infinity"
+2. mysql:8.0 必须设置 env.MYSQL_ROOT_PASSWORD
+3. postgres:15-alpine 必须设置 env.POSTGRES_PASSWORD
+4. components 中每个组件必须有 name（英文小写连字符）、image、ports、env、command 五个字段
+5. 组件数量 2~4 个，不要过多
+
+请返回纯 JSON，格式如下，不要有任何解释文字：
+{{
+  "name": "靶场名称（简短中文）",
+  "description": "详细描述",
+  "components": [
+    {{
+      "type": "container",
+      "name": "组件名（英文小写连字符）",
+      "image": "镜像名（必须在白名单内）",
+      "ports": [容器内端口数字],
+      "env": {{"环境变量": "值"}},
+      "command": null或"sleep infinity"
+    }}
+  ],
+  "vulnerabilities": ["漏洞类型"],
+  "network": {{"type": "bridge", "subnet": "172.24.0.0/16"}}
+}}"""
+
+        resp = self.ai_chat(prompt, task_type='range_generation')
+        if resp and '{' in resp:
+            try:
+                start, end = resp.find('{'), resp.rfind('}') + 1
+                config = json.loads(resp[start:end])
+                if isinstance(config, dict) and 'components' in config:
+                    # 补全白名单中缺少的 env/command
+                    self._patch_components(config['components'])
+                    return config
+            except Exception as e:
+                current_app.logger.warning(f"AI配置解析失败: {e}, resp={resp[:200]}")
+
+        # 兜底：返回最简单的 Web 靶场
         return {
-            'name': '自定义靶场',
+            'name': '基础Web靶场',
             'description': scenario_desc,
             'components': [
-                {'type': 'container', 'name': 'target-1', 'image': 'ubuntu:20.04', 'ports': [22, 80]}
+                {'type': 'container', 'name': 'web-server', 'image': 'nginx:alpine',
+                 'ports': [80], 'env': {}, 'command': None},
             ],
-            'vulnerabilities': ['通用漏洞'],
+            'vulnerabilities': ['通用Web漏洞'],
             'network': {'type': 'bridge', 'subnet': '172.24.0.0/16'}
         }
-    
+
+    def _patch_components(self, components: List[Dict]):
+        """为组件补全白名单中要求的 env 和 command（防止 AI 漏写）"""
+        for comp in components:
+            image = comp.get('image', '')
+            defaults = VERIFIED_IMAGES.get(image, {})
+            # 只补充 AI 没有设置的必要字段
+            if 'env' not in comp:
+                comp['env'] = {}
+            if 'command' not in comp:
+                comp['command'] = None
+            # 必须有 command 的镜像
+            if defaults.get('command') and not comp.get('command'):
+                comp['command'] = defaults['command']
+            # 必须有的 env（如 MYSQL_ROOT_PASSWORD）
+            for k, v in defaults.get('env', {}).items():
+                if k not in comp.get('env', {}):
+                    comp.setdefault('env', {})[k] = v
+
+    # ==================== 环境创建（真实 Docker 部署）====================
+
     def create_environment(self, scenario_config: Dict, user_id: str = None) -> Dict:
-        """创建靶场环境 - 真正调用Docker部署容器"""
+        """创建靶场环境 - 每个组件创建独立 Docker 容器和 DB 记录"""
         if user_id:
             self.user_id = user_id
-        
-        # 从配置中提取靶场名称，优先使用AI生成的名称
+
         range_name = scenario_config.get('name', '自定义靶场')
-        if range_name == '自定义靶场' and scenario_config.get('description'):
-            # 如果名称为默认值，尝试从描述中提取有意义的名称
-            desc = scenario_config['description']
-            # 取描述前12个字符作为名称
-            short_name = desc[:12].rstrip('，。、；：')
-            if short_name:
-                range_name = short_name + '靶场'
-        
-        env_id = f"env_{int(__import__('time').time())}_{range_name[:20]}"
-        
+        env_id = f"env_{int(time.time())}_{range_name[:20]}"
+
         result = {
             'status': 'pending',
             'environment_id': env_id,
@@ -166,237 +297,202 @@ class EnvAgent(BaseAgent):
             'errors': [],
             'name': range_name
         }
-        
-        try:
-            
-            Log.create('info', 'env_agent', 
-                      f"环境管理Agent开始创建靶场: {scenario_config.get('name', '自定义靶场')}", 
-                      user_id=self.user_id)
-            
-            # 尝试连接Docker
-            docker_client = None
-            try:
-                import docker
-                docker_client = docker.from_env()
-            except Exception as e:
-                current_app.logger.warning(f"Docker连接失败，将仅创建数据库记录: {e}")
-            
-            # 创建组件（Docker容器）
-            components = scenario_config.get('components', [])
-            for comp in components:
-                comp_result = {
-                    'name': comp.get('name', 'component'),
-                    'type': comp.get('type', 'container'),
-                    'status': 'pending',
-                    'ports': []
-                }
 
-                if docker_client:
-                    image = comp.get('image', 'nginx:latest')
-                    container_ports = comp.get('ports', [80])
-                    
-                    # 生成容器名称
-                    from routes.targets import sanitize_container_name
-                    from config import DOCKER_CONFIG
-                    clean_name = sanitize_container_name(comp['name'])
-                    ts = datetime.now().strftime('%Y%m%d_%H%M%S')
-                    container_name = f'{DOCKER_CONFIG["container_prefix"]}{clean_name}_{ts}'
-                    
-                    # 为每个容器端口分配主机端口，从8100开始尝试
-                    # 策略：为每个容器端口分配一个独立的主机端口，所有端口一起尝试
-                    container_deployed = False
-                    # 起始偏移量，每个容器端口分配不同的起始端口
-                    base_port = 8100 + (len(result['components_created']) * 100)
-                    
-                    for attempt_base in range(base_port, 8950, 50):
-                        if container_deployed:
-                            break
-                        try:
-                            port_bindings = {}
-                            assigned_ports = []
-                            for idx, cp in enumerate(container_ports):
-                                host_port = attempt_base + idx * 10
-                                port_bindings[f'{cp}/tcp'] = ('127.0.0.1', host_port)
-                                assigned_ports.append(host_port)
-                            
-                            # 运行容器（一次性传入所有端口映射）
-                            container = docker_client.containers.run(
-                                image,
-                                name=container_name,
-                                detach=True,
-                                ports=port_bindings,
-                                remove=False
-                            )
-                            
-                            import time
-                            time.sleep(1)
-                            container.reload()
-                            
-                            comp_result['status'] = 'running'
-                            comp_result['ports'] = assigned_ports
-                            comp_result['container_id'] = container.short_id
-                            comp_result['container_name'] = container_name
-                            container_deployed = True
-                            
-                            Log.create('success', 'env_agent',
-                                      f"Docker容器部署完成: {comp['name']} ({image}) 端口: {assigned_ports}",
-                                      user_id=self.user_id)
-                            
-                        except Exception as port_err:
-                            err_str = str(port_err)
-                            # 端口冲突则尝试下一组端口
-                            if 'port is already allocated' in err_str or 'bind' in err_str.lower():
-                                continue
-                            # 镜像拉取失败（403/网络问题）→ 降级为模拟模式
-                            if ('403' in err_str or 'Forbidden' in err_str or
-                                    'pull access denied' in err_str or
-                                    'failed to resolve' in err_str or
-                                    'manifest unknown' in err_str or
-                                    'unauthorized' in err_str.lower()):
-                                comp_result['status'] = 'simulated'
-                                comp_result['ports'] = comp.get('ports', [])
-                                comp_result['note'] = f'镜像拉取失败（{image}），已降级为模拟模式'
-                                Log.create('warning', 'env_agent',
-                                          f"镜像拉取失败，降级为模拟: {comp.get('name', 'component')} ({image}): {err_str[:120]}",
-                                          user_id=self.user_id)
-                                container_deployed = True
-                                break
-                            # 其他错误
-                            comp_result['status'] = 'failed'
-                            comp_result['error'] = err_str
-                            result['errors'].append(f"{comp.get('name', 'component')}: {err_str}")
-                            Log.create('danger', 'env_agent',
-                                      f"组件部署失败: {comp.get('name', 'component')} - {err_str}",
-                                      user_id=self.user_id)
-                            container_deployed = True
-                            break
-                    
-                    if not container_deployed:
-                        comp_result['status'] = 'failed'
-                        comp_result['error'] = '所有候选端口均被占用'
-                        result['errors'].append(f"{comp['name']}: 所有候选端口均被占用")
-                        Log.create('danger', 'env_agent',
-                                  f"组件部署失败: {comp['name']} - 所有候选端口均被占用",
-                                  user_id=self.user_id)
-                else:
-                    # 无Docker时仅记录
-                    comp_result['status'] = 'simulated'
-                    comp_result['ports'] = comp.get('ports', [])
-                    Log.create('info', 'env_agent',
-                              f"组件模拟部署: {comp['name']} (Docker不可用)",
-                              user_id=self.user_id)
-                
-                result['components_created'].append(comp_result)
-            
-            # 创建靶场数据库记录
-            all_ports = []
-            for c in result['components_created']:
-                for p in c.get('ports', []):
-                    all_ports.append(str(p))
-            
-            target = Target(
-                name=range_name,
-                type='container',
-                ip='127.0.0.1',
-                port=','.join(all_ports) if all_ports else '8080',
-                os='Linux',
-                status='running',
-                config=json.dumps(scenario_config)
-            )
-            target.save()
-            
-            if target.target_id:
-                result['target_id'] = target.target_id
-            
-            result['status'] = 'running'
-            result['name'] = range_name
-            result['components'] = result['components_created']
-            
-            Log.create('success', 'env_agent', 
-                      f"靶场环境创建完成: {env_id}", 
-                      user_id=self.user_id)
-            
-        except Exception as e:
-            result['status'] = 'failed'
-            result['errors'].append(str(e))
-            Log.create('danger', 'env_agent', 
-                      f"靶场环境创建失败: {str(e)}", 
-                      user_id=self.user_id)
-        
-        return result
-    
-    def destroy_environment(self, env_id: str) -> Dict:
-        """销毁靶场环境"""
-        result = {'success': False, 'destroyed': []}
-        
+        Log.create('info', 'env_agent',
+                   f"AI靶场开始部署: {range_name}",
+                   user_id=self.user_id)
+
+        # 连接 Docker
+        docker_client = None
         try:
-            Log.create('info', 'env_agent', 
-                      f"开始销毁靶场环境: {env_id}", 
-                      user_id=self.user_id)
-            
+            import docker
+            docker_client = docker.from_env()
+        except Exception as e:
+            current_app.logger.warning(f"Docker连接失败: {e}")
+
+        from config import DOCKER_CONFIG
+        prefix = DOCKER_CONFIG.get('container_prefix', 'target_')
+
+        components = scenario_config.get('components', [])
+        base_port = 8100
+
+        for idx, comp in enumerate(components):
+            comp_result = {
+                'name': comp.get('name', f'component-{idx}'),
+                'type': comp.get('type', 'container'),
+                'status': 'pending',
+                'ports': [],
+            }
+
+            image = comp.get('image', 'nginx:alpine')
+            # 补全白名单 env/command
+            self._patch_components([comp])
+            env_vars = comp.get('env', {})
+            command = comp.get('command')
+            container_ports = comp.get('ports', [80]) or []
+
+            if docker_client:
+                # 生成容器名
+                clean = _sanitize(comp['name'])
+                ts = datetime.now().strftime('%Y%m%d_%H%M%S')
+                container_name = f'{prefix}{clean}_{ts}'
+
+                # 分配主机端口（base_port 递增，避免冲突）
+                attempt_base = base_port + idx * 10
+                deployed = False
+
+                for try_base in range(attempt_base, attempt_base + 500, 10):
+                    try:
+                        port_bindings = {}
+                        assigned = []
+                        for j, cp in enumerate(container_ports):
+                            hp = try_base + j
+                            port_bindings[f'{cp}/tcp'] = ('0.0.0.0', hp)
+                            assigned.append(hp)
+
+                        run_kwargs = dict(
+                            name=container_name,
+                            detach=True,
+                            ports=port_bindings if port_bindings else None,
+                            environment=env_vars or None,
+                            remove=False,
+                        )
+                        if command:
+                            run_kwargs['command'] = command
+
+                        container = docker_client.containers.run(image, **run_kwargs)
+                        time.sleep(1)
+                        container.reload()
+
+                        comp_result['status'] = container.status
+                        comp_result['ports'] = assigned
+                        comp_result['container_id'] = container.short_id
+                        comp_result['container_name'] = container_name
+                        deployed = True
+
+                        # 每个容器保存独立 DB 记录
+                        host_port = assigned[0] if assigned else None
+                        container_port_num = container_ports[0] if container_ports else 80
+                        cfg = {
+                            'image': image,
+                            'host_port': host_port,
+                            'container_port': container_port_num,
+                            'container_id': container.id,
+                            'container_name': container_name,
+                            'scenario_name': range_name,
+                        }
+                        t = Target(
+                            name=container_name,
+                            type='docker',
+                            port=f'{host_port}:{container_port_num}' if host_port else '',
+                            os=image,
+                            status=container.status,
+                            config=json.dumps(cfg)
+                        )
+                        t.save()
+                        comp_result['target_id'] = t.target_id
+
+                        Log.create('success', 'env_agent',
+                                   f"容器部署成功: {container_name} ({image}) 端口:{assigned}",
+                                   user_id=self.user_id)
+                        break
+
+                    except Exception as e:
+                        err = str(e)
+                        if 'port is already allocated' in err.lower() or 'bind' in err.lower():
+                            continue  # 端口冲突，尝试下一组
+                        if any(kw in err for kw in ('pull access denied', '403', 'Forbidden',
+                                                     'manifest unknown', 'failed to resolve',
+                                                     'unauthorized')):
+                            comp_result['status'] = 'simulated'
+                            comp_result['note'] = f'镜像拉取失败({image})，已标记为模拟'
+                            Log.create('warning', 'env_agent',
+                                       f"镜像拉取失败，降级模拟: {comp['name']} ({image})",
+                                       user_id=self.user_id)
+                            deployed = True
+                            break
+                        comp_result['status'] = 'failed'
+                        comp_result['error'] = err[:200]
+                        result['errors'].append(f"{comp['name']}: {err[:100]}")
+                        Log.create('danger', 'env_agent',
+                                   f"组件部署失败: {comp['name']} - {err[:100]}",
+                                   user_id=self.user_id)
+                        deployed = True
+                        break
+
+                if not deployed:
+                    comp_result['status'] = 'failed'
+                    comp_result['error'] = '所有候选端口均被占用'
+                    result['errors'].append(f"{comp['name']}: 端口全部占用")
+            else:
+                comp_result['status'] = 'simulated'
+                comp_result['note'] = 'Docker不可用，已标记为模拟'
+                Log.create('info', 'env_agent',
+                           f"Docker不可用，模拟部署: {comp['name']}", user_id=self.user_id)
+
+            result['components_created'].append(comp_result)
+
+        result['status'] = 'running'
+        result['name'] = range_name
+        result['components'] = result['components_created']
+
+        Log.create('success', 'env_agent',
+                   f"AI靶场部署完成: {range_name} ({len(result['components_created'])} 个组件)",
+                   user_id=self.user_id)
+        return result
+
+    def destroy_environment(self, env_id: str) -> Dict:
+        result = {'success': False, 'destroyed': []}
+        try:
+            Log.create('info', 'env_agent', f"销毁靶场: {env_id}", user_id=self.user_id)
             result['success'] = True
-            Log.create('success', 'env_agent', 
-                      f"靶场环境已销毁: {env_id}", 
-                      user_id=self.user_id)
-            
+            Log.create('success', 'env_agent', f"靶场已销毁: {env_id}", user_id=self.user_id)
         except Exception as e:
             result['errors'] = [str(e)]
-        
         return result
-    
+
     def get_environment_status(self, env_id: str) -> Dict:
-        """获取环境状态"""
         return {'status': 'running', 'environment_id': env_id}
-    
+
     def list_available_scenarios(self) -> List[Dict]:
-        """列出可用场景模板"""
-        return [
-            {'id': key, **template}
-            for key, template in self.SCENARIO_TEMPLATES.items()
-        ]
+        return [{'id': k, **v} for k, v in self.SCENARIO_TEMPLATES.items()]
 
     def expand_scenario_variants(self, base_key: str) -> List[Dict]:
-        """
-        从基础场景自动扩展出多个变种（零代码）：
-          WAF变种、登录防护变种、内网横向变种、域控变种
-        若 AI 可用则让 AI 生成更多创意变种，否则使用规则模板。
-        """
         base = self.SCENARIO_TEMPLATES.get(base_key)
         if not base:
             return []
 
-        # 规则模板变种
         variants = [
             self._make_variant(base, 'waf', '带WAF防护',
-                               extra_components=[{'type': 'container', 'name': 'waf', 'image': 'nginx:latest', 'ports': [8080]}],
-                               extra_vulns=['WAF绕过', 'HTTP走私'],
-                               desc_suffix='，前置部署WAF，验证规则绕过能力'),
-            self._make_variant(base, 'login', '带登录认证',
-                               extra_components=[{'type': 'container', 'name': 'auth-server', 'image': 'redis:alpine', 'ports': [6379]}],
-                               extra_vulns=['暴力破解', '会话固定', '弱口令'],
-                               desc_suffix='，增加登录认证环节，测试认证绕过'),
+                extra_components=[{'type': 'container', 'name': 'waf-proxy', 'image': 'nginx:alpine',
+                                   'ports': [8080], 'env': {}, 'command': None}],
+                extra_vulns=['WAF绕过', 'HTTP走私'], desc_suffix='，前置WAF，验证绕过能力'),
+            self._make_variant(base, 'cache', '带缓存层',
+                extra_components=[{'type': 'container', 'name': 'cache-server', 'image': 'redis:alpine',
+                                   'ports': [6379], 'env': {}, 'command': None}],
+                extra_vulns=['暴力破解', '会话固定', '弱口令'], desc_suffix='，增加Redis缓存，测试缓存投毒'),
             self._make_variant(base, 'internal', '带内网横向',
-                               extra_components=[
-                                   {'type': 'container', 'name': 'pivot-host', 'image': 'ubuntu:20.04', 'ports': [22]},
-                                   {'type': 'container', 'name': 'internal-db', 'image': 'mysql:5.7', 'ports': [3306]},
-                               ],
-                               extra_vulns=['内网扫描', '横向移动', '凭证窃取'],
-                               desc_suffix='，模拟内网环境，验证横向渗透防御'),
-            self._make_variant(base, 'domain', '带域控环境',
-                               extra_components=[
-                                   {'type': 'container', 'name': 'dc-server', 'image': 'ubuntu:20.04', 'ports': [389, 445, 88]},
-                               ],
-                               extra_vulns=['Pass-the-Hash', 'Kerberoasting', 'DCSync', '域提权'],
-                               desc_suffix='，模拟域控环境，验证AD安全防护'),
+                extra_components=[
+                    {'type': 'container', 'name': 'pivot-host', 'image': 'ubuntu:22.04',
+                     'ports': [22], 'env': {}, 'command': 'sleep infinity'},
+                    {'type': 'container', 'name': 'internal-db', 'image': 'mysql:8.0',
+                     'ports': [3306], 'env': {'MYSQL_ROOT_PASSWORD': 'Range@123'}, 'command': None},
+                ],
+                extra_vulns=['内网扫描', '横向移动', '凭证窃取'], desc_suffix='，模拟内网横向渗透'),
+            self._make_variant(base, 'fullstack', '全栈应用',
+                extra_components=[
+                    {'type': 'container', 'name': 'app-server', 'image': 'node:18-alpine',
+                     'ports': [3000], 'env': {}, 'command': 'sleep infinity'},
+                ],
+                extra_vulns=['SSRF', 'IDOR', 'JWT伪造'], desc_suffix='，增加Node.js应用层'),
         ]
 
-        # 若 AI 可用，追加一个AI创意变种
         if self.llm.enabled:
             try:
-                ai_variant = self._ai_expand_variant(base)
-                if ai_variant:
-                    variants.append(ai_variant)
-            except Exception as e:
+                ai_v = self._ai_expand_variant(base)
+                if ai_v:
+                    variants.append(ai_v)
+            except Exception:
                 pass
 
         return variants
@@ -405,7 +501,7 @@ class EnvAgent(BaseAgent):
                       extra_components: list, extra_vulns: list, desc_suffix: str) -> dict:
         import copy
         v = copy.deepcopy(base)
-        v['id'] = f"{base.get('name', 'base').replace('靶场', '').strip()}_{suffix}"
+        v['id'] = f"{base.get('name','base').replace('靶场','').strip()}_{suffix}"
         v['name'] = f"{base['name']}（{label}）"
         v['description'] = base['description'] + desc_suffix
         v['components'] = v.get('components', []) + extra_components
@@ -414,42 +510,42 @@ class EnvAgent(BaseAgent):
         v['is_variant'] = True
         return v
 
-    def _ai_expand_variant(self, base: dict) -> dict:
-        """让AI生成一个创意变种"""
-        prompt = f"""基于以下网络安全靶场场景，生成一个有创意的变种靶场配置：
+    def _ai_expand_variant(self, base: dict) -> Optional[Dict]:
+        prompt = f"""基于以下靶场场景生成一个创意变种（只使用 nginx:alpine、mysql:8.0、redis:alpine、ubuntu:22.04、node:18-alpine 等常见镜像）：
 
-原始场景：
-名称：{base['name']}
-描述：{base['description']}
-漏洞类型：{', '.join(base.get('vulnerabilities', []))}
+原始：名称={base['name']}，漏洞={','.join(base.get('vulnerabilities',[]))}
 
-要求：
-1. 变种名称在原名称后加括号说明（如"（带云原生环境）"）
-2. 增加2-3个新组件
-3. 增加3-4个新漏洞类型
-4. 体现某种特定技术场景（云原生/物联网/移动端/供应链等）
-
-请返回纯JSON，格式同原始场景，额外加 "variant_label" 和 "is_variant": true 字段。
+要求：增加2个组件，3个漏洞，体现某特定技术场景（云原生/微服务/物联网），返回纯JSON，加 variant_label 和 is_variant:true 字段。
 """
         resp = self.ai_chat(prompt, task_type='scenario_expansion')
         if resp and '{' in resp:
             try:
-                import json
-                start = resp.find('{')
-                end = resp.rfind('}') + 1
+                start, end = resp.find('{'), resp.rfind('}') + 1
                 v = json.loads(resp[start:end])
                 v['is_variant'] = True
+                if 'components' in v:
+                    self._patch_components(v['components'])
                 return v
             except Exception:
                 pass
         return None
 
 
-# 全局实例 - 放在类定义之后
+def _sanitize(name: str) -> str:
+    """简单容器名清理"""
+    import re
+    name = name.replace(':', '_').replace('/', '_')
+    name = re.sub(r'[^a-zA-Z0-9_.-]', '_', name)
+    name = re.sub(r'_+', '_', name).strip('_')
+    if name and name[0].isdigit():
+        name = 'c_' + name
+    return (name or 'container')[:50]
+
+
+# 全局单例
 _env_agent = None
 
 def get_env_agent(user_id: str = None) -> EnvAgent:
-    """获取环境管理Agent实例"""
     global _env_agent
     if _env_agent is None:
         _env_agent = EnvAgent(user_id)

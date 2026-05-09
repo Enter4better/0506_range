@@ -1,0 +1,100 @@
+[
+  {
+    "input": "Web安全靶场，包含SQL注入和XSS漏洞，需要Web服务器和数据库",
+    "output": {
+      "name": "Web安全靶场",
+      "description": "包含Nginx前端和MySQL数据库的典型Web应用靶场，预置SQL注入和XSS漏洞场景",
+      "components": [
+        {
+          "type": "container",
+          "name": "web-server",
+          "image": "nginx:alpine",
+          "ports": [80],
+          "env": {},
+          "command": null
+        },
+        {
+          "type": "container",
+          "name": "db-server",
+          "image": "mysql:8.0",
+          "ports": [3306],
+          "env": {
+            "MYSQL_ROOT_PASSWORD": "Range@123",
+            "MYSQL_DATABASE": "testdb"
+          },
+          "command": null
+        }
+      ],
+      "vulnerabilities": ["SQL注入", "XSS跨站脚本", "文件上传"],
+      "network": {"type": "bridge", "subnet": "172.20.0.0/16"}
+    },
+    "timestamp": "2026-05-09T10:00:00"
+  },
+  {
+    "input": "内网渗透靶场，多台主机，模拟企业内网横向移动",
+    "output": {
+      "name": "内网渗透靶场",
+      "description": "模拟企业内网环境，包含多台主机和数据库服务器，用于横向移动和内网渗透演练",
+      "components": [
+        {
+          "type": "container",
+          "name": "web-entry",
+          "image": "nginx:alpine",
+          "ports": [80],
+          "env": {},
+          "command": null
+        },
+        {
+          "type": "container",
+          "name": "internal-host",
+          "image": "ubuntu:22.04",
+          "ports": [22],
+          "env": {},
+          "command": "sleep infinity"
+        },
+        {
+          "type": "container",
+          "name": "internal-db",
+          "image": "mysql:8.0",
+          "ports": [3306],
+          "env": {
+            "MYSQL_ROOT_PASSWORD": "Range@123",
+            "MYSQL_DATABASE": "intranet"
+          },
+          "command": null
+        }
+      ],
+      "vulnerabilities": ["横向移动", "暴力破解", "凭证窃取", "内网扫描"],
+      "network": {"type": "bridge", "subnet": "172.21.0.0/16"}
+    },
+    "timestamp": "2026-05-09T10:05:00"
+  },
+  {
+    "input": "API安全靶场，测试接口认证绕过和越权访问",
+    "output": {
+      "name": "API安全靶场",
+      "description": "基于Node.js的API服务靶场，预置认证绕过和越权访问漏洞",
+      "components": [
+        {
+          "type": "container",
+          "name": "api-server",
+          "image": "node:18-alpine",
+          "ports": [3000],
+          "env": {"NODE_ENV": "development"},
+          "command": "sleep infinity"
+        },
+        {
+          "type": "container",
+          "name": "cache-server",
+          "image": "redis:alpine",
+          "ports": [6379],
+          "env": {},
+          "command": null
+        }
+      ],
+      "vulnerabilities": ["越权访问", "JWT伪造", "IDOR", "业务逻辑漏洞"],
+      "network": {"type": "bridge", "subnet": "172.22.0.0/16"}
+    },
+    "timestamp": "2026-05-09T10:10:00"
+  }
+]
