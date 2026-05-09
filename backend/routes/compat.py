@@ -32,8 +32,13 @@ compat_bp = Blueprint('compat', __name__, url_prefix='/api')
 _docker_client = None
 
 def get_docker_client():
-    """获取Docker客户端（单例模式）"""
+    """获取Docker客户端（单例模式，带连接活性检测）"""
     global _docker_client
+    if _docker_client is not None:
+        try:
+            _docker_client.ping()
+        except Exception:
+            _docker_client = None
     if _docker_client is None:
         try:
             _docker_client = docker.from_env()
@@ -277,7 +282,7 @@ def compat_env_list():
                         ports = ', '.join(port_list)
 
                     info = {
-                        'id': container.short_id,
+                        'docker_id': container.short_id,
                         'image': container.image.tags[0] if container.image.tags else container.image.short_id,
                         'status': container.status,
                         'ports': ports
@@ -351,14 +356,22 @@ def compat_env_create():
         
         current_app.logger.info(f"创建容器: name={name}, image={image}, ports={port_bindings}")
         
-        container = client.containers.run(
-            image,
-            name=name,
-            detach=True,
-            ports=port_bindings,
-            remove=False
-        )
-        
+        try:
+            container = client.containers.run(
+                image,
+                name=name,
+                detach=True,
+                ports=port_bindings,
+                remove=False
+            )
+        except docker.errors.ImageNotFound:
+            return jsonify({'status': 'error', 'msg': f'镜像 {image} 不存在，请先执行: docker pull {image}'}), 400
+        except docker.errors.APIError as e:
+            err_str = str(e)
+            if 'port is already allocated' in err_str.lower() or 'address already in use' in err_str.lower() or 'bind:' in err_str.lower():
+                return jsonify({'status': 'error', 'msg': f'端口 {host_port} 已被占用，请更换其他端口'}), 409
+            return jsonify({'status': 'error', 'msg': f'Docker创建失败: {err_str}'}), 500
+
         # 保存到数据库
         config = {
             'image': image,
@@ -618,10 +631,52 @@ def compat_env_start(target_id):
                 target.save()
             return jsonify({'status': 'success', 'container': container.name, 'note': 'already_running'}), 200
         
-        # 5. 启动Docker容器（优先SDK，失败降级到CLI）
+        # 5. 启动Docker容器（优先SDK，端口冲突自动重建，失败降级到CLI）
         try:
             container.start()
             current_app.logger.info(f"[{log_tag}] SDK start 成功: {container.name}")
+        except docker.errors.APIError as api_err:
+            err_str = str(api_err)
+            is_port_conflict = ('port is already allocated' in err_str.lower() or
+                                'address already in use' in err_str.lower() or
+                                'bind:' in err_str.lower())
+            if is_port_conflict and target and target.config:
+                current_app.logger.warning(f"[{log_tag}] 端口冲突，尝试重建容器: {api_err}")
+                try:
+                    cfg = json.loads(target.config) if isinstance(target.config, str) else target.config
+                    image = cfg.get('image') or (container.image.tags[0] if container.image.tags else None)
+                    container_port = cfg.get('container_port', 80)
+                    old_name = (container.name or '').lstrip('/')
+                    if not image:
+                        return jsonify({'status': 'error', 'msg': f'端口冲突且无法获取镜像信息: {err_str}'}), 500
+                    new_host_port = find_available_port(8080)
+                    if not new_host_port:
+                        return jsonify({'status': 'error', 'msg': '端口全部占用，无法启动'}), 500
+                    try:
+                        container.remove(force=True)
+                    except Exception:
+                        pass
+                    docker_client = get_docker_client()
+                    new_container = docker_client.containers.run(
+                        image, name=old_name, detach=True,
+                        ports={f'{container_port}/tcp': ('127.0.0.1', new_host_port)},
+                        remove=False
+                    )
+                    container = new_container
+                    cfg['host_port'] = new_host_port
+                    target.port = f'{new_host_port}:{container_port}'
+                    target.config = json.dumps(cfg)
+                    target.status = 'running'
+                    target.save()
+                    current_app.logger.info(f"[{log_tag}] 端口冲突重建成功: {old_name}, 新端口: {new_host_port}")
+                    Log.create('success', 'target', f'端口冲突重建: {old_name} (新端口 {new_host_port})', user_id=user_id)
+                    return jsonify({'status': 'success', 'container': old_name, 'port': new_host_port, 'note': 'port_conflict_recreated'}), 200
+                except Exception as recreate_err:
+                    current_app.logger.error(f"[{log_tag}] 重建容器失败: {recreate_err}")
+                    return jsonify({'status': 'error', 'msg': f'端口冲突，重建失败: {str(recreate_err)}'}), 500
+            else:
+                current_app.logger.error(f"[{log_tag}] Docker API 错误: {api_err}")
+                return jsonify({'status': 'error', 'msg': f'Docker容器启动失败: {err_str}'}), 500
         except Exception as sdk_err:
             current_app.logger.warning(f"[{log_tag}] SDK start 失败，尝试 CLI 降级: {sdk_err}")
             container_cli_name = (container.name or '').lstrip('/')

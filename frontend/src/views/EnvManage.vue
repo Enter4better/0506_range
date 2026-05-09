@@ -198,7 +198,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, watch, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Setting, Plus, Refresh, Delete, Monitor, CircleCheck, Warning, DataLine, Box, Loading, Download } from '@element-plus/icons-vue'
 
@@ -216,6 +216,14 @@ const createForm = reactive({
 })
 
 let refreshInterval = null
+
+// 部分镜像使用非标准端口，选择后自动更新端口建议
+const IMAGE_PORT_DEFAULTS = {
+  'webgoat/webgoat': '8080:8080',
+}
+watch(() => createForm.image, (img) => {
+  createForm.port = IMAGE_PORT_DEFAULTS[img] || '8080:80'
+})
 
 // 获取靶场列表
 async function fetchTargets() {
@@ -291,7 +299,7 @@ async function createTarget() {
 // 启动靶场
 async function startTarget(target) {
   try {
-    const id = target.id || target.target_id || target.name
+    const id = target.target_id || target.id || target.name
     const res = await request.post(`/env/start/${id}`)
     if (res.status === 'success') {
       ElMessage.success(`靶场已启动: ${target.name}`)
@@ -307,7 +315,7 @@ async function startTarget(target) {
 // 停止靶场
 async function stopTarget(target) {
   try {
-    const id = target.id || target.target_id || target.name
+    const id = target.target_id || target.id || target.name
     const res = await request.post(`/env/stop/${id}`)
     if (res.status === 'success') {
       ElMessage.success(`靶场已停止: ${target.name}`)
@@ -327,7 +335,7 @@ async function deleteTarget(target) {
       type: 'warning'
     })
 
-    const id = target.id || target.target_id || target.name
+    const id = target.target_id || target.id || target.name
     const res = await request.post(`/env/delete/${id}`)
     if (res.status === 'success') {
       ElMessage.success(`靶场已删除: ${target.name}`)
