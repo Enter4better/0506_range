@@ -142,9 +142,14 @@ def _create_container_direct(data):
                     break
                 sock.close()
         
-        docker_client = docker.from_env()
+        try:
+            docker_client = docker.from_env()
+        except Exception as e:
+            current_app.logger.error(f"Docker服务连接失败: {e}")
+            return jsonify({'status': 'error', 'msg': '无法连接到Docker服务，请确保Docker Desktop已启动'}), 503
+
         port_bindings = {f'{container_port}/tcp': ('127.0.0.1', host_port)}
-        
+
         container = docker_client.containers.run(
             image,
             name=name,
@@ -279,31 +284,34 @@ def compat_env_delete(target_id):
                 container_name = target.name
         
         # 3. 查找Docker容器（多种方式）
-        docker_client = docker.from_env()
-        
-        if container_name:
-            try:
-                container = docker_client.containers.get(container_name)
-            except:
-                containers = docker_client.containers.list(all=True, filters={'name': container_name})
-                if containers:
-                    container = containers[0]
-        
-        if not container:
-            try:
-                container = docker_client.containers.get(target_id)
-            except:
-                pass
-        
-        if not container:
-            try:
-                for c in docker_client.containers.list(all=True):
-                    if c.short_id == target_id or c.id == target_id or c.name == target_id:
-                        container = c
-                        break
-            except:
-                pass
-        
+        try:
+            docker_client = docker.from_env()
+
+            if container_name:
+                try:
+                    container = docker_client.containers.get(container_name)
+                except:
+                    containers = docker_client.containers.list(all=True, filters={'name': container_name})
+                    if containers:
+                        container = containers[0]
+
+            if not container:
+                try:
+                    container = docker_client.containers.get(target_id)
+                except:
+                    pass
+
+            if not container:
+                try:
+                    for c in docker_client.containers.list(all=True):
+                        if c.short_id == target_id or c.id == target_id or c.name == target_id:
+                            container = c
+                            break
+                except:
+                    pass
+        except Exception as docker_err:
+            current_app.logger.warning(f"Docker服务不可用，仅删除数据库记录: {docker_err}")
+
         # 4. 强制删除Docker容器
         docker_deleted = False
         if container:

@@ -135,30 +135,6 @@
           </el-button>
         </el-form>
 
-        <!-- 演示账号 -->
-        <div class="demo-section">
-          <div class="demo-header">
-            <el-icon>
-              <Monitor />
-            </el-icon>
-            <span>快速体验</span>
-          </div>
-          <div class="demo-buttons">
-            <div class="demo-btn" @click="fillDemo('admin', 'admin123')">
-              <el-icon>
-                <UserFilled />
-              </el-icon>
-              <span>管理员</span>
-            </div>
-            <div class="demo-btn" @click="fillDemo('user', 'user123')">
-              <el-icon>
-                <User />
-              </el-icon>
-              <span>普通用户</span>
-            </div>
-          </div>
-        </div>
-
         <!-- 状态栏 -->
         <div class="status-bar">
           <div class="status-item">
@@ -186,7 +162,7 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { User, UserFilled, Lock, Unlock, Timer, Message, Key, Monitor } from '@element-plus/icons-vue'
+import { User, UserFilled, Lock, Unlock, Timer, Message, Key } from '@element-plus/icons-vue'
 import axios from 'axios'
 
 const router = useRouter()
@@ -252,13 +228,6 @@ async function checkBackend() {
   }
 }
 
-function fillDemo(username, password) {
-  loginForm.value.username = username
-  loginForm.value.password = password
-  isLogin.value = true
-  ElMessage.success('演示账号已填充')
-}
-
 async function handleLogin() {
   if (!loginFormRef.value) return
   try {
@@ -296,12 +265,7 @@ async function handleLogin() {
     }
   } catch (error) {
     console.error('登录错误:', error)
-    // 演示模式 - 保存模拟 token
-    localStorage.setItem('token', 'demo_token_' + Date.now())
-    const demoUser = { username: loginForm.value.username, role: loginForm.value.username === 'admin' ? '管理员' : '用户' }
-    localStorage.setItem('cyber_user', JSON.stringify(demoUser))
-    ElMessage.success('演示模式登录成功')
-    router.push('/')
+    ElMessage.error(error.response?.data?.msg || '登录失败，请检查用户名和密码')
   } finally {
     loading.value = false
   }
@@ -331,10 +295,8 @@ async function handleRegister() {
     } else {
       ElMessage.error(res.data?.msg || res.msg || '注册失败')
     }
-  } catch {
-    ElMessage.success('演示模式：注册成功')
-    isLogin.value = true
-    loginForm.value.username = registerForm.value.username
+  } catch (error) {
+    ElMessage.error(error.response?.data?.msg || '注册失败，请重试')
   } finally {
     loading.value = false
   }
@@ -759,52 +721,6 @@ onUnmounted(() => {
 
 .submit-btn:active {
   transform: translateY(0);
-}
-
-/* 演示区域 */
-.demo-section {
-  background: rgba(0, 229, 255, 0.05);
-  border: 1px solid rgba(0, 229, 255, 0.1);
-  border-radius: 12px;
-  padding: 16px;
-  margin-bottom: 20px;
-}
-
-.demo-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  color: var(--cyan);
-  margin-bottom: 12px;
-}
-
-.demo-buttons {
-  display: flex;
-  gap: 12px;
-}
-
-.demo-btn {
-  flex: 1;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 8px;
-  padding: 10px;
-  background: rgba(139, 44, 230, 0.1);
-  border: 1px solid rgba(139, 44, 230, 0.2);
-  border-radius: 8px;
-  font-size: 13px;
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.demo-btn:hover {
-  background: rgba(139, 44, 230, 0.2);
-  border-color: var(--purple);
-  color: #fff;
-  transform: translateY(-1px);
 }
 
 /* 状态栏 */
