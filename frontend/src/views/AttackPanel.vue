@@ -230,8 +230,7 @@
         </el-card>
 
         <!-- 攻击记录 -->
-        <AttackTimeline :logs="attackLogs" :total="attackTotal" @refresh="loadAttackHistory"
-          @page-change="onAttackPageChange" />
+        <AttackTimeline :logs="attackLogs" :total="attackTotal" @refresh="loadAttackHistory" />
       </el-col>
     </el-row>
 
@@ -305,7 +304,6 @@ const selectedTargetStatus = ref(null)
 const attackLogs = ref([])
 const attackTypes = ref([])
 const attackTotal = ref(0)
-const attackPage = ref(1)
 
 // 攻防进度状态
 const showProgress = ref(false)
@@ -566,7 +564,7 @@ async function launch() {
 async function loadAttackHistory() {
   try {
     const res = await request.get('/attack/list', {
-      params: { page: attackPage.value, limit: 10 }
+      params: { page: 1, limit: 6 }
     })
     if (res.status === 'success') {
       attackLogs.value = res.attacks || []
@@ -575,11 +573,6 @@ async function loadAttackHistory() {
   } catch (e) {
     console.error('加载攻击历史失败', e)
   }
-}
-
-function onAttackPageChange(page) {
-  attackPage.value = page
-  loadAttackHistory()
 }
 
 async function loadStats() {

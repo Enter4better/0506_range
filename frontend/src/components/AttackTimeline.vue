@@ -44,25 +44,15 @@
         </div>
       </el-timeline-item>
     </el-timeline>
-    <!-- 分页（始终显示，让用户知道有多少记录） -->
-    <div class="pagination-wrapper" v-if="total > 0">
-      <span class="page-total">共 {{ total }} 条记录，当前第 {{ currentPage }} 页</span>
-      <el-pagination
-        v-model:current-page="currentPage"
-        :page-size="pageSize"
-        :total="total"
-        :pager-count="5"
-        layout="prev, pager, next"
-        small
-        background
-        @current-change="onPageChange"
-      />
+    <!-- 省略提示：超出6条时显示 -->
+    <div v-if="total > logs.length" class="omit-hint">
+      <span class="omit-dots">···</span>
+      <span class="omit-text">还有 {{ total - logs.length }} 条历史记录未显示</span>
     </div>
   </el-card>
 </template>
 
 <script setup>
-import { ref, watch } from 'vue'
 import { Timer, Refresh, Document, Location, Aim } from '@element-plus/icons-vue'
 
 const props = defineProps({
@@ -70,23 +60,7 @@ const props = defineProps({
   total: { type: Number, default: 0 }
 })
 
-const emit = defineEmits(['refresh', 'page-change'])
-
-const currentPage = ref(1)
-const pageSize = ref(10)
-
-// total 减少时（如刷新后记录数变少），回到第1页避免空页
-watch(() => props.total, (newTotal) => {
-  const maxPage = Math.ceil(newTotal / pageSize.value) || 1
-  if (currentPage.value > maxPage) {
-    currentPage.value = 1
-    emit('page-change', 1)
-  }
-})
-
-function onPageChange(page) {
-  emit('page-change', page)
-}
+const emit = defineEmits(['refresh'])
 
 function getLogType(status) {
   const typeMap = {
@@ -202,18 +176,25 @@ function formatTime(time) {
   gap: 4px;
 }
 
-.pagination-wrapper {
+.omit-hint {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: space-between;
-  padding-top: 12px;
-  margin-top: 8px;
+  gap: 2px;
+  padding: 8px 0 4px;
   border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
 
-.page-total {
-  font-size: 12px;
+.omit-dots {
+  font-size: 18px;
   color: var(--text-muted);
-  white-space: nowrap;
+  letter-spacing: 4px;
+  line-height: 1;
+}
+
+.omit-text {
+  font-size: 11px;
+  color: var(--text-muted);
+  opacity: 0.7;
 }
 </style>
