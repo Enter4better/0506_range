@@ -72,12 +72,14 @@ def _cleanup_failed_containers():
 def list_targets():
     try:
         targets = Target.list_all()
+        docker_client = docker.from_env()
         
         result = []
         for target in targets:
             # 解析 config 获取镜像信息
             image_name = target.os or 'unknown'
             ports = target.port or ''
+            container_name = None
             
             # 如果有 config，尝试从中提取更详细的信息
             if target.config:
@@ -87,8 +89,26 @@ def list_targets():
                         image_name = config.get('image')
                     if config.get('host_port'):
                         ports = f"{config.get('host_port')}:{config.get('container_port', 80)}"
+                    container_name = config.get('container_name')
                 except:
                     pass
+            
+            # 实时获取 Docker 容器状态（优先使用真实状态）
+            real_status = target.status or 'stopped'
+            if container_name:
+                try:
+                    container = docker_client.containers.get(container_name)
+                    real_status = container.status  # running, exited, etc.
+                    # 同步更新数据库状态
+                    if target.status != real_status:
+                        target.status = real_status
+                        target.save()
+                except:
+                    # 容器不存在，标记为 stopped
+                    real_status = 'stopped'
+                    if target.status != 'stopped':
+                        target.status = 'stopped'
+                        target.save()
             
             result.append({
                 'id': target.target_id,
@@ -96,36 +116,11 @@ def list_targets():
                 'name': target.name or '未命名靶场',
                 'image': image_name,
                 'ports': ports,
-                'status': target.status or 'stopped',
+                'status': real_status,
                 'created': target.created_at,
-                'created_at': target.created_at
+                'created_at': target.created_at,
+                'container_name': container_name  # 添加容器名用于删除匹配
             })
-        
-        # 也获取 Docker 容器信息（补充未在数据库中的容器）
-        try:
-            docker_client = docker.from_env()
-            for container in docker_client.containers.list(all=True):
-                if container.name and container.name.startswith(DOCKER_CONFIG['container_prefix']):
-                    # 检查是否已存在
-                    exists = False
-                    for r in result:
-                        if r['name'] == container.name:
-                            exists = True
-                            break
-                    if not exists:
-                        # 从容器名提取显示名称
-                        display_name = container.name.replace(DOCKER_CONFIG['container_prefix'], '')
-                        result.append({
-                            'id': container.short_id,
-                            'target_id': container.short_id,
-                            'name': display_name,
-                            'image': container.image.tags[0] if container.image.tags else 'unknown',
-                            'ports': _get_container_ports(container),
-                            'status': container.status,
-                            'created': datetime.fromtimestamp(container.attrs['Created']).strftime('%Y-%m-%d %H:%M') if 'Created' in container.attrs else 'N/A'
-                        })
-        except Exception as e:
-            current_app.logger.error(f"获取Docker容器失败: {e}")
         
         return jsonify({'status': 'success', 'containers': result}), 200
         
