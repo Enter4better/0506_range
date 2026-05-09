@@ -257,58 +257,136 @@ def parse_port(port_str, default_host=8080, default_container=80):
 
 @compat_bp.route('/env/list', methods=['GET'])
 def compat_env_list():
-    """获取环境列表（兼容前端）"""
+    """获取环境列表 - 以Docker为准，自动与数据库双向同步"""
     try:
-        targets = Target.list_all()
-        
-        # 获取Docker容器信息
-        docker_info = {}
         client = get_docker_client()
-        
         prefix_legacy = 'target_'
         prefix_range = (DOCKER_CONFIG.get('container_prefix') or 'cyber_range_')
-        if client:
-            try:
-                for container in client.containers.list(all=True):
-                    raw_name = (container.name or '').lstrip('/')
-                    if not (raw_name.startswith(prefix_legacy) or raw_name.startswith(prefix_range)):
-                        continue
-                    ports = ''
-                    if container.ports:
-                        port_list = []
-                        for k, v in container.ports.items():
-                            if v:
-                                port_list.append(f"{v[0]['HostPort']}:{k}")
-                        ports = ', '.join(port_list)
 
-                    info = {
-                        'docker_id': container.short_id,
-                        'image': container.image.tags[0] if container.image.tags else container.image.short_id,
-                        'status': container.status,
-                        'ports': ports
-                    }
-                    docker_info[raw_name] = info
-            except Exception as e:
-                current_app.logger.error(f"获取Docker容器列表失败: {e}")
-        
+        # Docker不可用时降级返回DB数据，不做任何删除
+        if not client:
+            current_app.logger.warning("Docker不可用，降级返回数据库记录")
+            targets = Target.list_all()
+            return jsonify({
+                'status': 'success',
+                'containers': [t.to_dict() for t in targets],
+                'docker_unavailable': True
+            }), 200
+
+        # 1. 读取Docker中所有属于本系统的容器
+        docker_containers = {}   # raw_name -> container
+        try:
+            for c in client.containers.list(all=True):
+                raw_name = (c.name or '').lstrip('/')
+                if raw_name.startswith(prefix_legacy) or raw_name.startswith(prefix_range):
+                    docker_containers[raw_name] = c
+        except Exception as e:
+            current_app.logger.error(f"获取Docker容器列表失败: {e}")
+
+        docker_names = set(docker_containers.keys())
+
+        # 2. 构建DB记录映射（name -> target）
+        all_targets = Target.list_all()
+        db_by_name = {}
+        for t in all_targets:
+            cfg_name = (get_container_name_from_target(t) or '').lstrip('/')
+            key = cfg_name or (t.name or '').lstrip('/')
+            if key:
+                db_by_name[key] = t
+
+        # 3. 清理DB中Docker已不存在的孤立记录
+        for name, t in list(db_by_name.items()):
+            if name not in docker_names:
+                current_app.logger.info(f"自动清理孤立DB记录（Docker已无此容器）: {name}")
+                try:
+                    t.delete()
+                except Exception as e:
+                    current_app.logger.warning(f"清理DB记录失败: {e}")
+
+        # 4. 以Docker容器为基准构建列表，并补录DB中没有记录的容器
         containers = []
-        for target in targets:
-            container_info = target.to_dict()
-            merge_key = None
-            cfg_name = get_container_name_from_target(target)
-            if cfg_name and cfg_name.lstrip('/') in docker_info:
-                merge_key = cfg_name.lstrip('/')
-            elif target.name and target.name.lstrip('/') in docker_info:
-                merge_key = target.name.lstrip('/')
-            if merge_key:
-                container_info.update(docker_info[merge_key])
-            containers.append(container_info)
-        
+        for raw_name, container in docker_containers.items():
+            # 解析端口
+            ports = ''
+            host_port = None
+            container_port = None
+            if container.ports:
+                port_list = []
+                for k, v in container.ports.items():
+                    if v:
+                        port_list.append(f"{v[0]['HostPort']}:{k}")
+                        if host_port is None:
+                            host_port = int(v[0]['HostPort'])
+                            container_port = int(k.split('/')[0])
+                ports = ', '.join(port_list)
+
+            image = container.image.tags[0] if container.image.tags else container.image.short_id
+
+            # 格式化创建时间
+            created_raw = (container.attrs or {}).get('Created', '')
+            created = created_raw[:19].replace('T', ' ') if created_raw else ''
+
+            db_target = db_by_name.get(raw_name)
+
+            if db_target:
+                # 同步Docker状态到DB
+                if db_target.status != container.status:
+                    db_target.status = container.status
+                    try:
+                        db_target.save()
+                    except Exception:
+                        pass
+                info = {
+                    'target_id': db_target.target_id,
+                    'name': raw_name,
+                    'image': image,
+                    'status': container.status,
+                    'ports': ports,
+                    'created': db_target.created_at or created,
+                    'docker_id': container.short_id,
+                    'os': db_target.os or image,
+                    'config': db_target.config,
+                }
+            else:
+                # Docker有但DB没有 → 补录
+                config = {
+                    'image': image,
+                    'container_name': raw_name,
+                    'docker_id': container.short_id,
+                    'host_port': host_port,
+                    'container_port': container_port,
+                }
+                new_target = Target(
+                    name=raw_name,
+                    type='docker',
+                    port=f'{host_port}:{container_port}' if host_port else '',
+                    os=image,
+                    status=container.status,
+                    config=json.dumps(config)
+                )
+                try:
+                    new_target.save()
+                except Exception as e:
+                    current_app.logger.warning(f"补录DB记录失败: {e}")
+                info = {
+                    'target_id': new_target.target_id,
+                    'name': raw_name,
+                    'image': image,
+                    'status': container.status,
+                    'ports': ports,
+                    'created': created,
+                    'docker_id': container.short_id,
+                    'os': image,
+                    'config': json.dumps(config),
+                }
+
+            containers.append(info)
+
         return jsonify({
             'status': 'success',
             'containers': containers
         }), 200
-    
+
     except Exception as e:
         current_app.logger.error(f"获取环境列表失败: {e}")
         return jsonify({'status': 'error', 'msg': '获取环境列表失败'}), 500
@@ -810,22 +888,39 @@ def compat_env_stop(target_id):
 
 @compat_bp.route('/env/stats', methods=['GET'])
 def compat_env_stats():
-    """获取环境统计（兼容前端）"""
+    """获取环境统计 - 以Docker为准"""
     try:
+        client = get_docker_client()
+        prefix_legacy = 'target_'
+        prefix_range = (DOCKER_CONFIG.get('container_prefix') or 'cyber_range_')
+
+        if client:
+            try:
+                all_containers = [
+                    c for c in client.containers.list(all=True)
+                    if (c.name or '').lstrip('/').startswith(prefix_legacy)
+                    or (c.name or '').lstrip('/').startswith(prefix_range)
+                ]
+                stats = {
+                    'total': len(all_containers),
+                    'running': sum(1 for c in all_containers if c.status == 'running'),
+                    'stopped': sum(1 for c in all_containers if c.status in ('exited', 'stopped', 'created')),
+                    'error': sum(1 for c in all_containers if c.status not in ('running', 'exited', 'stopped', 'created')),
+                }
+                return jsonify({'status': 'success', 'data': stats}), 200
+            except Exception as e:
+                current_app.logger.warning(f"Docker统计失败，降级使用DB: {e}")
+
+        # 降级：Docker不可用时从DB读
         targets = Target.list_all()
-        
         stats = {
             'total': len(targets),
             'running': len([t for t in targets if t.status == 'running']),
-            'stopped': len([t for t in targets if t.status == 'stopped']),
-            'error': len([t for t in targets if t.status == 'error'])
+            'stopped': len([t for t in targets if t.status in ('stopped', 'exited')]),
+            'error': len([t for t in targets if t.status == 'error']),
         }
-        
-        return jsonify({
-            'status': 'success',
-            'data': stats
-        }), 200
-    
+        return jsonify({'status': 'success', 'data': stats}), 200
+
     except Exception as e:
         current_app.logger.error(f"获取环境统计失败: {e}")
         return jsonify({'status': 'error', 'msg': '获取环境统计失败'}), 500
