@@ -53,11 +53,18 @@ def _get_container_ports(container):
     return ', '.join(ports) if ports else ''
 
 
+_RANGE_PREFIXES = (DOCKER_CONFIG['container_prefix'], 'target_')
+
+
+def _is_range_container(name: str) -> bool:
+    return bool(name) and any(name.startswith(p) for p in _RANGE_PREFIXES)
+
+
 def _cleanup_failed_containers():
     try:
         docker_client = docker.from_env()
         for c in docker_client.containers.list(all=True):
-            if c.name and c.name.startswith(DOCKER_CONFIG['container_prefix']):
+            if _is_range_container(c.name):
                 if c.status in ('created', 'dead', 'exited'):
                     try:
                         c.remove(force=True)
@@ -544,7 +551,7 @@ def clean_targets():
         failed = []
         
         for c in docker_client.containers.list(all=True):
-            if c.name and c.name.startswith(DOCKER_CONFIG['container_prefix']):
+            if _is_range_container(c.name):
                 try:
                     try:
                         c.stop(timeout=5)

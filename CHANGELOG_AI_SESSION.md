@@ -466,5 +466,40 @@ AI 生成逻辑（`env_agent.py` LLM prompt）：场景含 Web 漏洞靶场 → 
 
 ---
 
+## 会话八：清理靶场显示已清理0个但列表仍存在靶场
+
+### Q：清理靶场操作提示"已清理 0 个靶场"，但 target 开头的靶场仍显示在列表中
+
+**根本原因：**
+
+系统存在两套容器命名前缀，清理函数只认其中一套：
+
+| 路由 | 文件 | 容器前缀 |
+|------|------|----------|
+| `/env/create`（前端调用） | `compat.py` | 硬编码 `target_` |
+| `/env/list` | `compat.py` | 识别 `target_` **和** `cyber_range_` |
+| `/env/clean`（清理按钮） | `targets.py` | 只删 `cyber_range_` |
+
+前端点"清理全部" → `targets.py clean_targets()` → 遍历 Docker 容器时只匹配 `cyber_range_` → `target_` 容器全部漏掉 → 返回 `cleaned: 0` → 列表刷新后仍显示所有靶场。
+
+**修复方案：**
+
+**`backend/routes/targets.py`**
+- 新增模块级常量 `_RANGE_PREFIXES = (DOCKER_CONFIG['container_prefix'], 'target_')`
+- 新增辅助函数 `_is_range_container(name)` 检查是否属于本系统容器（两种前缀均识别）
+- `_cleanup_failed_containers()` 和 `clean_targets()` 均改用 `_is_range_container()`
+
+**`backend/routes/compat.py`**
+- `compat_env_create()` 创建容器时改为读取 `DOCKER_CONFIG['container_prefix']`，不再硬编码 `target_`，统一使用 `cyber_range_` 前缀
+
+**修改文件：**
+
+| 文件 | 变更 |
+|------|------|
+| `backend/routes/targets.py` | 新增 `_RANGE_PREFIXES` + `_is_range_container()`，cleanup/clean 使用统一判断 |
+| `backend/routes/compat.py` | 创建容器从硬编码 `target_` 改为 `DOCKER_CONFIG['container_prefix']` |
+
+---
+
 *生成时间：2026-05-11*
 *AI 助手：Claude Sonnet 4.6（claude-sonnet-4-6）*

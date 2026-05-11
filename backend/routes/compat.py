@@ -450,15 +450,16 @@ def compat_env_create():
         port_str = data.get('port', '8080:80')
         custom_name = data.get('name', '')
         
-        # 生成容器名称
+        # 生成容器名称（统一使用 cyber_range_ 前缀，与 clean_targets 保持一致）
+        prefix = DOCKER_CONFIG.get('container_prefix', 'cyber_range_')
         ts = datetime.now().strftime('%Y%m%d_%H%M%S')
         if custom_name:
             clean_name = sanitize_container_name(custom_name)
-            name = f'target_{clean_name}_{ts}'
+            name = f'{prefix}{clean_name}_{ts}'
         else:
             base_name = image.split(':')[0].replace('/', '_')
             clean_base = sanitize_container_name(base_name)
-            name = f'target_{clean_base}_{ts}'
+            name = f'{prefix}{clean_base}_{ts}'
         
         # 解析端口
         host_port, container_port = parse_port(port_str)
