@@ -432,4 +432,39 @@ AI 生成逻辑（`env_agent.py` LLM prompt）：场景含 Web 漏洞靶场 → 
 ---
 
 *生成时间：2026-05-11*
+
+---
+
+## 会话七：将 bWAPP 替换为 OWASP Mutillidae II
+
+### Q：bWAPP 拉取不稳定（raesene/bwapp EOF 断连），是否需要替换？换掉的话需要改代码和文档
+
+**背景：**
+- `raesene/bwapp` 项目已停止维护，Docker Hub 上的镜像拉取频繁出现 EOF 中断或 TLS 超时
+- 用户在 Windows + 公共镜像加速源环境下多次尝试均失败
+- 同类型的 `webpwnized/mutillidae`（OWASP Mutillidae II）持续维护、镜像稳定、漏洞类别覆盖更广
+
+**替换方案：**
+
+| 项目 | 旧值 | 新值 |
+|------|------|------|
+| 镜像名 | `raesene/bwapp` | `webpwnized/mutillidae` |
+| 靶场名称 | bWAPP百漏靶场 | Mutillidae综合靶场 |
+| 漏洞类型 | SQL注入/XSS/SSRF/文件包含/命令执行/XXE | SQL注入/XSS/CSRF/XXE/SSRF/认证缺陷/权限提升/文件包含 |
+| 端口 | 80 | 80 |
+| 难度 | 中-高 | 中-高 |
+| OWASP覆盖 | 100+ Web漏洞类型 | OWASP Top 10 + 40+ 漏洞类别 |
+| 成功率加成 | base +20%，命中 +12% | 不变（base +20%，命中 +12%）|
+
+**修改文件：**
+
+| 文件 | 变更 |
+|------|------|
+| `backend/agents/env_agent.py` | `VERIFIED_IMAGES` 和 `COMPREHENSIVE_TARGETS` 中 `raesene/bwapp` → `webpwnized/mutillidae` |
+| `frontend/src/utils/targetMeta.js` | `COMPREHENSIVE_TARGETS` 和 `IMAGE_PORT_HINTS` 中替换 bWAPP 条目 |
+| `frontend/src/views/EnvManage.vue` | 下拉选项和注释中的 bWAPP → Mutillidae |
+
+---
+
+*生成时间：2026-05-11*
 *AI 助手：Claude Sonnet 4.6（claude-sonnet-4-6）*

@@ -184,7 +184,7 @@
             <el-option-group label="漏洞靶场">
               <el-option label="DVWA (漏洞靶场)" value="vulnerables/web-dvwa" />
               <el-option label="WebGoat" value="webgoat/webgoat" />
-              <el-option label="BWAPP (漏洞靶场)" value="raesene/bwapp" />
+              <el-option label="Mutillidae (漏洞靶场)" value="webpwnized/mutillidae" />
             </el-option-group>
             <el-option-group label="系统环境">
               <el-option label="Ubuntu 22.04" value="ubuntu:22.04" />
@@ -200,7 +200,7 @@
           <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">格式: 主机端口:容器端口</div>
         </el-form-item>
 
-        <!-- 综合漏洞靶场说明（选中 DVWA / WebGoat / bWAPP 时显示） -->
+        <!-- 综合漏洞靶场说明（选中 DVWA / WebGoat / Mutillidae 时显示） -->
         <el-form-item v-if="getTargetMeta(createForm.image)" label=" ">
           <div class="vuln-hint-box">
             <div style="font-weight: 600; margin-bottom: 6px; color: var(--el-color-warning);">

@@ -37,7 +37,7 @@ VERIFIED_IMAGES = {
     # 专用漏洞靶场（需提前 docker pull）
     'vulnerables/web-dvwa':   {'env': {}, 'command': None, 'ports': [80]},
     'webgoat/webgoat':        {'env': {}, 'command': None, 'ports': [8080]},
-    'raesene/bwapp':          {'env': {}, 'command': None, 'ports': [80]},
+    'webpwnized/mutillidae':  {'env': {}, 'command': None, 'ports': [80]},
 }
 
 # 综合漏洞靶场元数据（DVWA / WebGoat / bWAPP 与普通容器的核心区别）
@@ -65,14 +65,14 @@ COMPREHENSIVE_TARGETS = {
         'base_rate_boost': 0.15,
         'match_bonus': 0.10,
     },
-    'raesene/bwapp': {
-        'label': 'bWAPP百漏靶场',
-        'short': 'bWAPP',
-        'vuln_types': ['SQL注入', 'XSS攻击', 'SSRF攻击', '文件包含', '命令执行', 'XXE注入'],
+    'webpwnized/mutillidae': {
+        'label': 'Mutillidae综合靶场',
+        'short': 'Mutillidae',
+        'vuln_types': ['SQL注入', 'XSS攻击', 'CSRF攻击', 'XXE注入', 'SSRF攻击', '认证缺陷', '权限提升', '文件包含'],
         'default_port': 80,
         'difficulty': '中-高',
-        'owasp_coverage': '100+ Web漏洞类型',
-        'description': 'Buggy Web Application — 覆盖 100+ 种漏洞类型的全面训练平台',
+        'owasp_coverage': 'OWASP Top 10 + 40+ 漏洞类别',
+        'description': 'OWASP Mutillidae II — 覆盖 40+ 漏洞类别的开源教学靶场，持续维护更新',
         'base_rate_boost': 0.20,
         'match_bonus': 0.12,
     },
