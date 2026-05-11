@@ -38,12 +38,12 @@ def get_topology():
         attack_agent = get_attack_agent()
         defense_agent = get_defense_agent()
         
-        attack_status = attack_agent.get_session_status(session_id) if session_id else {'current_phase': 1, 'phase_name': '未开始', 'successes': 0}
+        attack_status = attack_agent.get_session_status(session_id) if session_id else {'current_phase': 0, 'total_phases': 6, 'phase_name': '未开始', 'successes': 0}
         defense_status = defense_agent.get_status(session_id) if session_id else {'current_level': 1, 'level_name': '监控级', 'blocked_ips': []}
-        
+
         # 生成动态拓扑
         topology = _generate_dynamic_topology(target, attack_status, defense_status)
-        
+
         return jsonify({
             'status': 'success',
             'target': {'id': target.target_id, 'name': target.name},
@@ -74,9 +74,9 @@ def export_topology():
         attack_agent = get_attack_agent()
         defense_agent = get_defense_agent()
         
-        attack_status = attack_agent.get_session_status(session_id) if session_id else {'current_phase': 1, 'phase_name': '未开始', 'successes': 0}
+        attack_status = attack_agent.get_session_status(session_id) if session_id else {'current_phase': 0, 'total_phases': 6, 'phase_name': '未开始', 'successes': 0}
         defense_status = defense_agent.get_status(session_id) if session_id else {'current_level': 1, 'level_name': '监控级', 'blocked_ips': []}
-        
+
         topology = _generate_dynamic_topology(target, attack_status, defense_status)
         
         export_data = {

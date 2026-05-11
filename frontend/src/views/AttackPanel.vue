@@ -230,7 +230,14 @@
         </el-card>
 
         <!-- 攻击记录 -->
-        <AttackTimeline :logs="attackLogs" :total="attackTotal" @refresh="loadAttackHistory" />
+        <AttackTimeline
+          :logs="attackLogs"
+          :total="attackTotal"
+          :current-page="attackLogPage"
+          :page-size="attackLogPageSize"
+          @refresh="loadAttackHistory(1)"
+          @page-change="loadAttackHistory"
+        />
       </el-col>
     </el-row>
 
@@ -302,7 +309,19 @@ const targetDialogVisible = ref(false)
 const targets = ref([])
 const selectedTargetStatus = ref(null)
 const attackLogs = ref([])
-const attackTypes = ref([])
+const attackLogPage = ref(1)
+const attackLogPageSize = ref(10)
+// 与 AttackTypeSelect.vue 和后端 Attack.get_attack_types() 保持一致，共 16 种
+const attackTypes = ref([
+  { type: 'SQL注入', category: 'Web攻击' }, { type: 'XSS攻击', category: 'Web攻击' },
+  { type: 'CSRF攻击', category: 'Web攻击' }, { type: '文件包含', category: 'Web攻击' },
+  { type: '命令执行', category: 'Web攻击' }, { type: 'SSRF攻击', category: 'Web攻击' },
+  { type: 'XXE注入', category: 'Web攻击' }, { type: '权限提升', category: '系统攻击' },
+  { type: '容器逃逸', category: '系统攻击' }, { type: '反弹Shell', category: '系统攻击' },
+  { type: '端口扫描', category: '网络攻击' }, { type: '暴力破解', category: '网络攻击' },
+  { type: '中间人攻击', category: '网络攻击' }, { type: '后门植入', category: 'APT攻击' },
+  { type: '横向移动', category: 'APT攻击' }, { type: '数据外传', category: 'APT攻击' }
+])
 const attackTotal = ref(0)
 
 // 攻防进度状态
@@ -330,8 +349,8 @@ const phaseColors = {
   4: '#f56c6c', 5: '#f56c6c', 6: '#909399'
 }
 const phaseNames = {
-  1: '信息收集', 2: '漏洞探测', 3: '漏洞利用',
-  4: '权限维持', 5: '横向移动', 6: '痕迹清理'
+  1: '侦察', 2: '武器化与投递', 3: '漏洞利用',
+  4: '持久化与提权', 5: '横向移动', 6: '目标行动'
 }
 const defenseLevelNames = {
   1: '监控级', 2: '过滤级', 3: '阻断级',
@@ -560,11 +579,11 @@ async function launch() {
   }
 }
 
-// 数据加载（支持分页）
-async function loadAttackHistory() {
+async function loadAttackHistory(page = attackLogPage.value) {
+  attackLogPage.value = page
   try {
     const res = await request.get('/attack/list', {
-      params: { page: 1, limit: 6 }
+      params: { page: attackLogPage.value, limit: attackLogPageSize.value }
     })
     if (res.status === 'success') {
       attackLogs.value = res.attacks || []

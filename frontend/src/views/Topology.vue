@@ -49,9 +49,15 @@
           <div class="status-label">攻击阶段</div>
           <div class="status-value">{{ attackStatus.phase_name }}</div>
           <div class="status-progress">
-            <el-progress :percentage="attackStatus.current_phase * 16.7" :show-text="false" color="#f56c6c" />
+            <el-progress
+              :percentage="attackStatus.phase_name === '已结束' ? 100 : attackStatus.phase_name === '未开始' ? 0 : Math.round(attackStatus.current_phase / (attackStatus.total_phases || 6) * 100)"
+              :show-text="false" color="#f56c6c" />
           </div>
-          <div class="status-sub">第 {{ attackStatus.current_phase }} / 6 阶段</div>
+          <div class="status-sub">
+            <template v-if="attackStatus.phase_name === '未开始'">等待攻击启动</template>
+            <template v-else-if="attackStatus.phase_name === '已结束'">演练已结束</template>
+            <template v-else>第 {{ attackStatus.current_phase }} / {{ attackStatus.total_phases || 6 }} 阶段</template>
+          </div>
         </div>
       </el-col>
       <el-col :xs="12" :sm="6">

@@ -44,10 +44,16 @@
         </div>
       </el-timeline-item>
     </el-timeline>
-    <!-- 省略提示：超出6条时显示 -->
-    <div v-if="total > logs.length" class="omit-hint">
-      <span class="omit-dots">···</span>
-      <span class="omit-text">还有 {{ total - logs.length }} 条历史记录未显示</span>
+    <div class="pagination-wrapper" v-if="total > pageSize">
+      <el-pagination
+        :current-page="currentPage"
+        :page-size="pageSize"
+        :total="total"
+        layout="total, prev, pager, next"
+        small
+        background
+        @current-change="(p) => $emit('page-change', p)"
+      />
     </div>
   </el-card>
 </template>
@@ -57,10 +63,12 @@ import { Timer, Refresh, Document, Location, Aim } from '@element-plus/icons-vue
 
 const props = defineProps({
   logs: { type: Array, default: () => [] },
-  total: { type: Number, default: 0 }
+  total: { type: Number, default: 0 },
+  currentPage: { type: Number, default: 1 },
+  pageSize: { type: Number, default: 10 }
 })
 
-const emit = defineEmits(['refresh'])
+const emit = defineEmits(['refresh', 'page-change'])
 
 function getLogType(status) {
   const typeMap = {
@@ -176,25 +184,10 @@ function formatTime(time) {
   gap: 4px;
 }
 
-.omit-hint {
+.pagination-wrapper {
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  padding: 8px 0 4px;
+  justify-content: center;
+  padding: 12px 0 4px;
   border-top: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.omit-dots {
-  font-size: 18px;
-  color: var(--text-muted);
-  letter-spacing: 4px;
-  line-height: 1;
-}
-
-.omit-text {
-  font-size: 11px;
-  color: var(--text-muted);
-  opacity: 0.7;
 }
 </style>

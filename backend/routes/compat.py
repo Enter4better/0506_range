@@ -336,6 +336,28 @@ def compat_env_list():
                         db_target.save()
                     except Exception:
                         pass
+                # 停止的容器 Docker API 返回空端口，从 DB 补全显示
+                if not ports:
+                    if db_target.port:
+                        ports = db_target.port
+                        try:
+                            parts = db_target.port.split(':')
+                            if len(parts) == 2:
+                                host_port = int(parts[0])
+                                container_port = int(parts[1])
+                        except Exception:
+                            pass
+                    elif db_target.config:
+                        try:
+                            cfg_data = json.loads(db_target.config) if isinstance(db_target.config, str) else {}
+                            hp = cfg_data.get('host_port')
+                            cp = cfg_data.get('container_port')
+                            if hp and cp:
+                                ports = f'{hp}:{cp}'
+                                host_port = int(hp)
+                                container_port = int(cp)
+                        except Exception:
+                            pass
                 info = {
                     'target_id': db_target.target_id,
                     'name': raw_name,
@@ -933,13 +955,18 @@ def compat_attack_list():
     """获取攻击列表（兼容前端）"""
     try:
         user_id = get_current_user_id()
-        attacks = Attack.list_all(str(user_id))
-        
+        page = int(request.args.get('page', 1))
+        limit = int(request.args.get('limit', 10))
+        offset = (page - 1) * limit
+        attacks = Attack.list_all(str(user_id), limit=limit, offset=offset)
+        total = Attack.count(str(user_id))
+
         return jsonify({
             'status': 'success',
-            'attacks': [a.to_dict() for a in attacks]
+            'attacks': [a.to_dict() for a in attacks],
+            'total': total
         }), 200
-    
+
     except Exception as e:
         current_app.logger.error(f"获取攻击列表失败: {e}")
         return jsonify({'status': 'error', 'msg': '获取攻击列表失败'}), 500
