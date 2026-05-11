@@ -24,14 +24,14 @@ export const COMPREHENSIVE_TARGETS = {
     description: 'OWASP WebGoat — 面向开发者的教学型多漏洞靶场（默认端口 8080）',
     color: 'danger',
   },
-  'webpwnized/mutillidae': {
-    label: 'Mutillidae综合靶场',
-    short: 'Mutillidae',
-    vulnTypes: ['SQL注入', 'XSS攻击', 'CSRF攻击', 'XXE注入', 'SSRF攻击', '认证缺陷', '权限提升', '文件包含'],
-    defaultPort: 80,
+  'bkimminich/juice-shop': {
+    label: 'Juice Shop综合靶场',
+    short: 'JuiceShop',
+    vulnTypes: ['SQL注入', 'XSS攻击', 'CSRF攻击', 'XXE注入', 'SSRF攻击', '认证缺陷', '权限提升', '敏感数据泄露'],
+    defaultPort: 3000,
     difficulty: '中-高',
-    owaspCoverage: 'OWASP Top 10 + 40+ 漏洞类别',
-    description: 'OWASP Mutillidae II — 覆盖 40+ 漏洞类别的开源教学靶场，持续维护更新',
+    owaspCoverage: 'OWASP Top 10 全覆盖',
+    description: 'OWASP Juice Shop — 现代全栈刻意脆弱应用，覆盖 OWASP Top 10 全部类别',
     color: 'danger',
   },
 }
@@ -46,7 +46,7 @@ export function getTargetMeta(image) {
 export const IMAGE_PORT_HINTS = {
   'vulnerables/web-dvwa': '80:80',
   'webgoat/webgoat':      '8080:8080',
-  'webpwnized/mutillidae': '80:80',
+  'bkimminich/juice-shop': '3000:3000',
   'nginx:alpine':         '8080:80',
   'httpd:alpine':         '8080:80',
   'php:8.1-apache':       '8080:80',

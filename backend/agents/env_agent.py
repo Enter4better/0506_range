@@ -37,7 +37,7 @@ VERIFIED_IMAGES = {
     # 专用漏洞靶场（需提前 docker pull）
     'vulnerables/web-dvwa':   {'env': {}, 'command': None, 'ports': [80]},
     'webgoat/webgoat':        {'env': {}, 'command': None, 'ports': [8080]},
-    'webpwnized/mutillidae':  {'env': {}, 'command': None, 'ports': [80]},
+    'bkimminich/juice-shop':  {'env': {}, 'command': None, 'ports': [3000]},
 }
 
 # 综合漏洞靶场元数据（DVWA / WebGoat / bWAPP 与普通容器的核心区别）
@@ -65,14 +65,14 @@ COMPREHENSIVE_TARGETS = {
         'base_rate_boost': 0.15,
         'match_bonus': 0.10,
     },
-    'webpwnized/mutillidae': {
-        'label': 'Mutillidae综合靶场',
-        'short': 'Mutillidae',
-        'vuln_types': ['SQL注入', 'XSS攻击', 'CSRF攻击', 'XXE注入', 'SSRF攻击', '认证缺陷', '权限提升', '文件包含'],
-        'default_port': 80,
+    'bkimminich/juice-shop': {
+        'label': 'Juice Shop综合靶场',
+        'short': 'JuiceShop',
+        'vuln_types': ['SQL注入', 'XSS攻击', 'CSRF攻击', 'XXE注入', 'SSRF攻击', '认证缺陷', '权限提升', '敏感数据泄露'],
+        'default_port': 3000,
         'difficulty': '中-高',
-        'owasp_coverage': 'OWASP Top 10 + 40+ 漏洞类别',
-        'description': 'OWASP Mutillidae II — 覆盖 40+ 漏洞类别的开源教学靶场，持续维护更新',
+        'owasp_coverage': 'OWASP Top 10 全覆盖',
+        'description': 'OWASP Juice Shop — 现代全栈刻意脆弱应用，覆盖 OWASP Top 10 全部类别',
         'base_rate_boost': 0.20,
         'match_bonus': 0.12,
     },
