@@ -254,8 +254,15 @@ class DefenseAgent(BaseAgent):
         }
     
     def get_defense_logs(self, limit: int = 30) -> List[Dict]:
-        """获取防御日志"""
+        """获取防御日志（最后 limit 条，供内部统计用）"""
         return self.defense_logs[-limit:]
+
+    def get_defense_logs_paged(self, page: int = 1, limit: int = 10):
+        """分页获取防御日志，按时间倒序返回"""
+        total = len(self.defense_logs)
+        reversed_logs = list(reversed(self.defense_logs))
+        offset = (page - 1) * limit
+        return reversed_logs[offset:offset + limit], total
 
 
 _defense_agent = None

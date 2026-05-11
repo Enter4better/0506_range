@@ -250,5 +250,109 @@ const attackLogPageSize = ref(10)
 
 ---
 
+## 会话五：实时更新、分页、颜色、性能优化
+
+### Q1：攻击页面统计卡片（总攻击数/成功数/执行中）不实时更新
+
+**原因：** `loadStats()` 仅在 `progressTimer`（攻防进度轮询）的每次回调中被调用。当攻击结束后 `clearInterval(progressTimer)` 触发，或用户未发起攻击时，统计卡片不再刷新。
+
+**修改：** `AttackPanel.vue` 新增独立 `statsTimer`，在 `onMounted` 中每 5 秒调用一次 `loadStats()`，`onUnmounted` 中同步清除，与攻击进度轮询完全解耦。
+
+| 文件 | 修改 |
+|------|------|
+| `frontend/src/views/AttackPanel.vue` | 新增 `statsTimer = setInterval(loadStats, 5000)`；`onUnmounted` 补充 `clearInterval(statsTimer)` |
+
+---
+
+### Q2：防御页面日志应分页显示所有记录
+
+**原因：** 后端 `get_defense_logs(limit)` 仅返回最后 N 条，无总条数；前端无翻页组件，只有固定高度滚动区。
+
+**修改：**
+
+- `defense_agent.py` 新增 `get_defense_logs_paged(page, limit)` 方法，按时间倒序分页返回，同时返回 `total`。
+- `agents.py` 路由 `/agents/defense/logs` 改为接收 `page`/`limit` 参数，返回 `{ logs, total, page, limit }`。
+- `DefensePanel.vue` 新增 `defensePage`/`defensePageSize`/`defenseTotal` 状态；`loadDefenseLogs(page)` 传入页码；日志卡底部加 `el-pagination` 组件；自动刷新改为每 5 秒（原 3 秒）且保持当前页。
+
+| 文件 | 修改 |
+|------|------|
+| `backend/agents/defense_agent.py` | 新增 `get_defense_logs_paged(page, limit)` 方法 |
+| `backend/routes/agents.py` | `/defense/logs` 路由支持 `page`/`limit`，返回 `total` |
+| `frontend/src/views/DefensePanel.vue` | 分页状态 + `el-pagination` + 刷新间隔 3s→5s |
+
+---
+
+### Q3：拓扑图中橙色重复（WAF 和防火墙同色）
+
+**原因：** `nodeColors.waf` 和 `nodeColors.firewall` 均为 `'#e6a23c'`（橙色），图例只有"WAF/防火墙"合并条目，无法区分两类节点。
+
+**修改：** `Topology.vue`：
+- `nodeColors.firewall` 改为 `'#9b59b6'`（紫色）
+- `nodeColors.target` 改为 `'#00bcd4'`（青色，与数据库绿色区分）
+- 图例拆分为"WAF"和"防火墙"两条，新增"靶场目标"条目
+- CSS 补充 `.dot.firewall { background: #9b59b6 }` 和 `.dot.target-node { background: #00bcd4 }`
+
+节点颜色最终分配：
+
+| 节点类型 | 颜色 | 说明 |
+|---------|------|------|
+| attacker | `#f56c6c` 红色 | 攻击机 |
+| web/app | `#409eff` 蓝色 | Web/应用服务器 |
+| database/backup | `#67c23a` 绿色 | 数据库/备份 |
+| waf | `#e6a23c` 橙色 | WAF |
+| firewall | `#9b59b6` 紫色 | 防火墙（与WAF区分） |
+| monitor | `#909399` 灰色 | 监控系统 |
+| target | `#00bcd4` 青色 | 靶场目标 |
+
+| 文件 | 修改 |
+|------|------|
+| `frontend/src/views/Topology.vue` | `nodeColors` 修改；图例 HTML 拆分；CSS 新增 dot 样式 |
+
+---
+
+### Q4：AI靶场生成的网络类型有哪些，如何区分
+
+**说明（无代码修改）：**
+
+Docker 支持以下网络模式，本系统 `env_agent.py` 在生成配置时使用：
+
+| 类型 | 适用场景 | 本系统模板 |
+|------|---------|-----------|
+| `bridge`（默认）| 单主机容器互联，有独立 IP，推荐安全实验 | web_security、network_security 等大部分模板 |
+| `host` | 容器直接使用宿主机网络栈，性能最高但隔离最弱 | 无（安全靶场不建议） |
+| `none` | 完全隔离，无网络 | 无 |
+| `overlay` | 跨主机 Swarm 集群组网 | 无（单机部署） |
+| `container:<name>` | 与指定容器共享网络命名空间，常用于 sidecar 调试 | dvwa、webgoat、bwapp 模板（与靶场容器共网） |
+| `custom`（自定义 bridge）| 使用 `docker network create` 创建命名网络，支持 DNS 解析 | 高级场景配置 |
+
+AI 生成逻辑（`env_agent.py` LLM prompt）：场景含 Web 漏洞靶场 → `bridge`；需要靶场与辅助容器共用网络栈 → `container:容器名`；用户显式提到隔离/复杂网络 → 提示用 `custom`。
+
+---
+
+### Q5：优化页面加载速度与卡顿问题
+
+**分析：** 主要卡顿原因为每次切换路由时组件重新挂载（`onMounted`）并发起 API 请求，导致出现白屏过渡。
+
+**修改：** `App.vue` 的 `<router-view>` slot 内加入 `<keep-alive :max="8">`，缓存最近 8 个访问过的页面组件，避免重复销毁/挂载。后续访问直接恢复缓存状态，各页面内已有的轮询 timer 继续在后台保持数据新鲜。
+
+| 文件 | 修改 |
+|------|------|
+| `frontend/src/App.vue` | `<keep-alive :max="8">` 包裹 `<component :is="Component" />` |
+
+---
+
+## 本次变更文件汇总（会话五）
+
+| 文件 | 变更 |
+|------|------|
+| `backend/agents/defense_agent.py` | 新增 `get_defense_logs_paged` 方法 |
+| `backend/routes/agents.py` | `/defense/logs` 路由支持分页 |
+| `frontend/src/views/AttackPanel.vue` | 独立 `statsTimer` 每 5s 刷新统计 |
+| `frontend/src/views/DefensePanel.vue` | 防御日志分页（`el-pagination`）；刷新改为 5s |
+| `frontend/src/views/Topology.vue` | 节点颜色区分（防火墙改紫色，目标改青色）；图例更新 |
+| `frontend/src/App.vue` | `<keep-alive :max="8">` 提升页面切换速度 |
+
+---
+
 *生成时间：2026-05-11*
 *AI 助手：Claude Sonnet 4.6（claude-sonnet-4-6）*

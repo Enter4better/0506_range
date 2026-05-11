@@ -58,7 +58,9 @@
     <main class="main-content">
       <router-view v-slot="{ Component }">
         <transition name="fade-slide" mode="out-in">
-          <component :is="Component" />
+          <keep-alive :max="8">
+            <component :is="Component" />
+          </keep-alive>
         </transition>
       </router-view>
     </main>

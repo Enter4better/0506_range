@@ -338,6 +338,7 @@ const progressAlertType = ref('info')
 const progressStatus = ref({ type: 'warning', text: '执行中' })
 const currentSessionId = ref('')
 let progressTimer = null
+let statsTimer = null
 
 // 统计数据
 const stats = reactive({ total: 0, success: 0, running: 0, failed: 0 })
@@ -676,10 +677,12 @@ onMounted(() => {
   loadAttackTypes()
   loadAttackHistory()
   loadStats()
+  statsTimer = setInterval(loadStats, 5000)
 })
 
 onUnmounted(() => {
   if (progressTimer) clearInterval(progressTimer)
+  if (statsTimer) clearInterval(statsTimer)
 })
 </script>
 

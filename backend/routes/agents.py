@@ -219,12 +219,13 @@ def get_defense_status():
 
 @agents_bp.route('/defense/logs', methods=['GET'])
 def get_defense_logs():
-    """获取防御日志"""
+    """获取防御日志（支持分页）"""
     try:
         agent = get_defense_agent()
-        limit = int(request.args.get('limit', 30))
-        logs = agent.get_defense_logs(limit)
-        return jsonify({'status': 'success', 'logs': logs}), 200
+        page = int(request.args.get('page', 1))
+        limit = int(request.args.get('limit', 10))
+        logs, total = agent.get_defense_logs_paged(page, limit)
+        return jsonify({'status': 'success', 'logs': logs, 'total': total, 'page': page, 'limit': limit}), 200
     except Exception as e:
         return jsonify({'status': 'error', 'msg': str(e)}), 500
 

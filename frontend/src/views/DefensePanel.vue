@@ -97,8 +97,8 @@
         <div class="card-header">
           <span><el-icon>
               <Document />
-            </el-icon> 防御执行日志</span>
-          <el-button size="small" @click="loadDefenseLogs">刷新</el-button>
+            </el-icon> 防御执行日志（共 {{ defenseTotal }} 条）</span>
+          <el-button size="small" @click="loadDefenseLogs(1)">刷新</el-button>
         </div>
       </template>
       <div class="log-list">
@@ -113,6 +113,16 @@
           </div>
         </div>
         <div v-if="!defenseLogs.length" class="empty-tip">暂无防御日志，执行攻击后将自动记录</div>
+      </div>
+      <div v-if="defenseTotal > defensePageSize" style="margin-top: 12px; display: flex; justify-content: flex-end;">
+        <el-pagination
+          v-model:current-page="defensePage"
+          :page-size="defensePageSize"
+          :total="defenseTotal"
+          layout="total, prev, pager, next"
+          small
+          @current-change="loadDefenseLogs"
+        />
       </div>
     </el-card>
 
@@ -144,6 +154,9 @@ import request from '@/utils/request'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 const defenseLogs = ref([])
+const defensePage = ref(1)
+const defensePageSize = ref(10)
+const defenseTotal = ref(0)
 const activeBlocks = ref({})
 const stats = ref({ total_attacks: 0, defense_logs_count: 0 })
 const defenseRules = ref([])  // 从数据库加载的防御规则
@@ -236,11 +249,15 @@ async function loadDefenseStatus() {
   }
 }
 
-async function loadDefenseLogs() {
+async function loadDefenseLogs(page = defensePage.value) {
+  defensePage.value = page
   try {
-    const res = await request.get('/agents/defense/logs', { params: { limit: 100 } })
+    const res = await request.get('/agents/defense/logs', {
+      params: { page: defensePage.value, limit: defensePageSize.value }
+    })
     if (res.status === 'success') {
       defenseLogs.value = res.logs || []
+      defenseTotal.value = res.total || 0
     }
   } catch (e) {
     console.error('加载防御日志失败', e)
@@ -263,11 +280,11 @@ onMounted(() => {
   loadDefenseStatus()
   loadDefenseLogs()
   loadDefenseRules()
-  // 每3秒自动刷新防御状态
+  // 每5秒自动刷新防御状态（保持当前页）
   refreshTimer = setInterval(() => {
     loadDefenseStatus()
-    loadDefenseLogs()
-  }, 3000)
+    loadDefenseLogs(defensePage.value)
+  }, 5000)
 })
 
 onUnmounted(() => {

@@ -120,8 +120,10 @@
         <div class="legend-item"><span class="dot attacker"></span> 攻击机</div>
         <div class="legend-item"><span class="dot web"></span> Web服务器</div>
         <div class="legend-item"><span class="dot database"></span> 数据库</div>
-        <div class="legend-item"><span class="dot waf"></span> WAF/防火墙</div>
+        <div class="legend-item"><span class="dot waf"></span> WAF</div>
+        <div class="legend-item"><span class="dot firewall"></span> 防火墙</div>
         <div class="legend-item"><span class="dot monitor"></span> 监控系统</div>
+        <div class="legend-item"><span class="dot target-node"></span> 靶场目标</div>
         <div class="legend-item"><span class="dot threat-high"></span> 高危节点</div>
         <div class="legend-item"><span class="dot threat-critical"></span> 严重威胁</div>
       </div>
@@ -200,17 +202,17 @@ const topoRef = ref(null)
 const nodeDialogVisible = ref(false)
 const nodeDetail = ref(null)
 
-// 节点颜色
+// 节点颜色（每种节点类型使用不同颜色，避免混淆）
 const nodeColors = {
-  attacker: '#f56c6c',
-  web: '#409eff',
-  database: '#67c23a',
-  waf: '#e6a23c',
-  firewall: '#e6a23c',
-  monitor: '#909399',
-  app: '#409eff',
-  backup: '#67c23a',
-  target: '#67c23a'
+  attacker: '#f56c6c',   // 红色：攻击机
+  web: '#409eff',        // 蓝色：Web服务器
+  database: '#67c23a',   // 绿色：数据库
+  waf: '#e6a23c',        // 橙色：WAF
+  firewall: '#9b59b6',   // 紫色：防火墙（与WAF橙色区分）
+  monitor: '#909399',    // 灰色：监控系统
+  app: '#409eff',        // 蓝色：应用服务器
+  backup: '#67c23a',     // 绿色：备份服务器
+  target: '#00bcd4'      // 青色：靶场目标
 }
 
 const nodeLabels = {
@@ -568,8 +570,16 @@ onMounted(() => {
   background: #e6a23c;
 }
 
+.dot.firewall {
+  background: #9b59b6;
+}
+
 .dot.monitor {
   background: #909399;
+}
+
+.dot.target-node {
+  background: #00bcd4;
 }
 
 .dot.threat-high {
