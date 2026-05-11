@@ -204,15 +204,15 @@ const nodeDetail = ref(null)
 
 // 节点颜色（每种节点类型使用不同颜色，避免混淆）
 const nodeColors = {
-  attacker: '#f56c6c',   // 红色：攻击机
-  web: '#409eff',        // 蓝色：Web服务器
+  attacker: '#f56c6c',   // 珊瑚红：攻击机
+  web:      '#409eff',   // 天蓝：Web服务器
   database: '#67c23a',   // 绿色：数据库
-  waf: '#e6a23c',        // 橙色：WAF
-  firewall: '#9b59b6',   // 紫色：防火墙（与WAF橙色区分）
-  monitor: '#909399',    // 灰色：监控系统
-  app: '#409eff',        // 蓝色：应用服务器
-  backup: '#67c23a',     // 绿色：备份服务器
-  target: '#00bcd4'      // 青色：靶场目标
+  waf:      '#f9ca24',   // 亮黄：WAF
+  firewall: '#9b59b6',   // 紫色：防火墙
+  monitor:  '#909399',   // 灰色：监控系统
+  app:      '#e17055',   // 棕橙：应用服务器
+  backup:   '#dfe6e9',   // 近白/银：备份服务器
+  target:   '#00bcd4',   // 青色：靶场目标
 }
 
 const nodeLabels = {
@@ -367,7 +367,7 @@ function drawTopology() {
         ${node.port ? `<text x="${node.x}" y="${node.y + 13}" text-anchor="middle" fill="#606888" font-size="8">
           端口: ${node.port}
         </text>` : ''}
-        ${threat === 'critical' ? `<text x="${node.x}" y="${node.y - 18}" text-anchor="middle" fill="#f56c6c" font-size="8">
+        ${threat === 'critical' ? `<text x="${node.x}" y="${node.y - 18}" text-anchor="middle" fill="#c0392b" font-size="8">
           ⚠ 严重威胁
         </text>` : threat === 'high' ? `<text x="${node.x}" y="${node.y - 18}" text-anchor="middle" fill="#e6a23c" font-size="8">
           ⚠ 高危
@@ -567,7 +567,7 @@ onMounted(() => {
 }
 
 .dot.waf {
-  background: #e6a23c;
+  background: #f9ca24;
 }
 
 .dot.firewall {
@@ -588,8 +588,16 @@ onMounted(() => {
 }
 
 .dot.threat-critical {
-  background: #f56c6c;
-  box-shadow: 0 0 6px #f56c6c;
+  background: #c0392b;
+  box-shadow: 0 0 6px #c0392b;
+}
+
+.dot.app {
+  background: #e17055;
+}
+
+.dot.backup {
+  background: #dfe6e9;
 }
 
 .loading-tip,
