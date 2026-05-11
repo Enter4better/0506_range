@@ -36,7 +36,7 @@ VERIFIED_IMAGES = {
     'alpine:latest':          {'env': {}, 'command': 'sleep infinity', 'ports': []},
     # 专用漏洞靶场（需提前 docker pull）
     'vulnerables/web-dvwa':   {'env': {}, 'command': None, 'ports': [80]},
-    'webgoat/webgoat':        {'env': {}, 'command': None, 'ports': [8080]},
+    'webgoat/webgoat-8.0':        {'env': {}, 'command': None, 'ports': [8080]},
     'bkimminich/juice-shop':  {'env': {}, 'command': None, 'ports': [3000]},
 }
 
@@ -54,7 +54,7 @@ COMPREHENSIVE_TARGETS = {
         'base_rate_boost': 0.18,   # 刻意脆弱：基础成功率 +18%
         'match_bonus': 0.10,       # 攻击类型命中已知漏洞时额外 +10%
     },
-    'webgoat/webgoat': {
+    'webgoat/webgoat-8.0': {
         'label': 'WebGoat综合靶场',
         'short': 'WebGoat',
         'vuln_types': ['SQL注入', 'XSS攻击', 'CSRF攻击', 'XXE注入', 'SSRF攻击', '权限提升'],
@@ -136,20 +136,20 @@ class EnvAgent(BaseAgent):
             'name': 'WebGoat OWASP 教学靶场',
             'description': 'OWASP WebGoat — 面向开发者的安全培训平台，含注入、认证缺陷、访问控制、密码学等模块',
             'components': [
-                {'type': 'container', 'name': 'webgoat-target', 'image': 'webgoat/webgoat',
+                {'type': 'container', 'name': 'webgoat-target', 'image': 'webgoat/webgoat-8.0',
                  'ports': [8080], 'env': {}, 'command': None},
             ],
             'vulnerabilities': ['SQL注入', 'XXE注入', 'SSRF攻击', '不安全的反序列化', '访问控制缺陷'],
             'network': {'type': 'bridge', 'subnet': '172.24.0.0/16'}
         },
-        'bwapp': {
-            'name': 'bWAPP 百漏靶场',
-            'description': 'Buggy Web Application — 超过 100 种 Web 漏洞的全覆盖训练平台，含 OWASP Top 10 全类型',
+        'juice-shop': {
+            'name': 'Juice Shop OWASP 综合靶场',
+            'description': 'OWASP Juice Shop — 现代全栈刻意脆弱应用，覆盖 OWASP Top 10 全部类别，端口 3000',
             'components': [
-                {'type': 'container', 'name': 'bwapp-target', 'image': 'raesene/bwapp',
-                 'ports': [80], 'env': {}, 'command': None},
+                {'type': 'container', 'name': 'juiceshop-target', 'image': 'bkimminich/juice-shop',
+                 'ports': [3000], 'env': {}, 'command': None},
             ],
-            'vulnerabilities': ['SQL注入', 'XSS跨站脚本', '文件包含', 'SSRF攻击', '命令执行', 'XXE注入'],
+            'vulnerabilities': ['SQL注入', 'XSS跨站脚本', 'CSRF', '认证缺陷', '敏感数据泄露', 'XXE注入'],
             'network': {'type': 'bridge', 'subnet': '172.25.0.0/16'}
         },
     }
@@ -292,7 +292,7 @@ class EnvAgent(BaseAgent):
 1. ubuntu:22.04、python:3.11-slim、node:18-alpine、alpine:latest 必须设置 command 为 "sleep infinity"
 2. mysql:8.0 必须设置 env.MYSQL_ROOT_PASSWORD
 3. postgres:15-alpine 必须设置 env.POSTGRES_PASSWORD
-4. vulnerables/web-dvwa、webgoat/webgoat、raesene/bwapp 是自包含漏洞靶场，env 和 command 均留空，端口分别为 80、8080、80
+4. vulnerables/web-dvwa、webgoat/webgoat-8.0、bkimminich/juice-shop 是自包含漏洞靶场，env 和 command 均留空，端口分别为 80、8080、3000
 5. components 中每个组件必须有 name（英文小写连字符）、image、ports、env、command 五个字段
 6. 组件数量 2~4 个，不要过多
 

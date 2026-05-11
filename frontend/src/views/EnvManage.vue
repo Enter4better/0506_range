@@ -183,7 +183,7 @@
             </el-option-group>
             <el-option-group label="漏洞靶场">
               <el-option label="DVWA (漏洞靶场)" value="vulnerables/web-dvwa" />
-              <el-option label="WebGoat" value="webgoat/webgoat" />
+              <el-option label="WebGoat" value="webgoat/webgoat-8.0" />
               <el-option label="Juice Shop (漏洞靶场)" value="bkimminich/juice-shop" />
             </el-option-group>
             <el-option-group label="系统环境">

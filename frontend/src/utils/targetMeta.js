@@ -14,7 +14,7 @@ export const COMPREHENSIVE_TARGETS = {
     description: 'Damn Vulnerable Web Application — 经典 OWASP Top 10 多漏洞训练靶场',
     color: 'warning',
   },
-  'webgoat/webgoat': {
+  'webgoat/webgoat-8.0': {
     label: 'WebGoat综合靶场',
     short: 'WebGoat',
     vulnTypes: ['SQL注入', 'XSS攻击', 'CSRF攻击', 'XXE注入', 'SSRF攻击', '权限提升'],
@@ -45,7 +45,7 @@ export function getTargetMeta(image) {
 /** 端口建议映射（创建靶场时自动填充） */
 export const IMAGE_PORT_HINTS = {
   'vulnerables/web-dvwa': '80:80',
-  'webgoat/webgoat':      '8080:8080',
+  'webgoat/webgoat-8.0':      '8080:8080',
   'bkimminich/juice-shop': '3000:3000',
   'nginx:alpine':         '8080:80',
   'httpd:alpine':         '8080:80',
