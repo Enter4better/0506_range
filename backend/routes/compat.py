@@ -1061,10 +1061,19 @@ def compat_attack_types():
 def compat_attack_stats():
     """获取攻击统计（兼容前端）"""
     try:
+        user_id = '1'
         stats = Attack.get_stats()
+        user_attacks = Attack.list_all(user_id, 1000)
+        user_stats = {
+            'total': len(user_attacks),
+            'success': len([a for a in user_attacks if a.status == 'completed']),
+            'failed': len([a for a in user_attacks if a.status == 'failed']),
+            'running': len([a for a in user_attacks if a.status == 'running'])
+        }
         return jsonify({
             'status': 'success',
-            'data': stats
+            'stats': stats,
+            'user_stats': user_stats
         }), 200
     except Exception as e:
         current_app.logger.error(f"获取攻击统计失败: {e}")

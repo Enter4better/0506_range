@@ -13,16 +13,13 @@
 
     <!-- 统计卡片 -->
     <el-row :gutter="16" class="stats-row">
-      <el-col :xs="12" :sm="6">
+      <el-col :xs="12" :sm="8">
         <StatCard :icon="Aim" :value="stats.total" label="总攻击数" type="danger" />
       </el-col>
-      <el-col :xs="12" :sm="6">
+      <el-col :xs="12" :sm="8">
         <StatCard :icon="SuccessFilled" :value="stats.success" label="成功攻击" type="success" />
       </el-col>
-      <el-col :xs="12" :sm="6">
-        <StatCard :icon="Loading" :value="stats.running" label="执行中" type="warning" />
-      </el-col>
-      <el-col :xs="12" :sm="6">
+      <el-col :xs="24" :sm="8">
         <StatCard :icon="List" :value="attackTypes.length" label="攻击类型" type="info" />
       </el-col>
     </el-row>
@@ -339,7 +336,7 @@ import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
   Aim, Setting, Edit, Location, Connection,
-  MagicStick, Position, List, SuccessFilled, Loading,
+  MagicStick, Position, List, SuccessFilled,
   Refresh, CopyDocument, Close, Monitor, Document, DataLine
 } from '@element-plus/icons-vue'
 import request from '@/utils/request'
@@ -604,7 +601,6 @@ async function launch() {
         })
 
       if (execRes.status === 'success') {
-        stats.running++
         const sessionId = execRes.session_id || ''
 
         // 启动攻防进度动画
