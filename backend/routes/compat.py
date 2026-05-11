@@ -25,6 +25,7 @@ from models.attack import Attack
 from models.defense import Defense
 from models.log import Log
 from config import DOCKER_CONFIG
+from agents.env_agent import COMPREHENSIVE_TARGETS
 
 compat_bp = Blueprint('compat', __name__, url_prefix='/api')
 
@@ -409,6 +410,19 @@ def compat_env_list():
                     'os': image,
                     'config': json.dumps(config),
                 }
+
+            # 综合漏洞靶场元数据注解
+            comp = COMPREHENSIVE_TARGETS.get(image) or COMPREHENSIVE_TARGETS.get(image.split(':')[0])
+            if comp:
+                info['is_comprehensive'] = True
+                info['vuln_label'] = comp['label']
+                info['vuln_types'] = comp['vuln_types']
+                info['vuln_difficulty'] = comp['difficulty']
+                info['owasp_coverage'] = comp.get('owasp_coverage', '')
+            else:
+                info['is_comprehensive'] = False
+                info['vuln_label'] = ''
+                info['vuln_types'] = []
 
             containers.append(info)
 

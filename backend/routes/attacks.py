@@ -35,7 +35,7 @@ exercise_sessions = {}
 sessions_lock = threading.Lock()
 
 
-def _execute_dynamic_attack_async(attack_id: str, attack: Attack, session_id: str):
+def _execute_dynamic_attack_async(attack_id: str, attack: Attack, session_id: str, target_image: str = ''):
     """异步执行动态攻防演练"""
     try:
         attack.update_status('running')
@@ -45,11 +45,12 @@ def _execute_dynamic_attack_async(attack_id: str, attack: Attack, session_id: st
         attack_agent = get_attack_agent()
         defense_agent = get_defense_agent()
 
-        # 使用attack_agent执行阶段化攻击（自动升级阶段）
+        # 使用attack_agent执行阶段化攻击（传入target_image以启用综合靶场加成）
         attack_result = attack_agent.execute_attack(
             session_id=session_id,
             attack_type=attack.attack_type,
-            intensity=attack.intensity
+            intensity=attack.intensity,
+            target_image=target_image
         )
 
         # 获取攻击阶段信息
@@ -216,6 +217,10 @@ def execute_attack(attack_id):
         if attack.status != 'pending':
             return jsonify({'status': 'error', 'msg': '攻击任务状态不正确'}), 400
 
+        # 从请求体读取靶场镜像（可选，用于综合靶场成功率加成）
+        req_data = request.get_json(silent=True) or {}
+        target_image = req_data.get('target_image', '')
+
         # 自动创建演练会话
         session_id = f"session_{uuid.uuid4().hex[:8]}"
         with sessions_lock:
@@ -224,6 +229,7 @@ def execute_attack(attack_id):
                 'attack_id': attack_id,
                 'attack_type': attack.attack_type,
                 'target': attack.target,
+                'target_image': target_image,
                 'current_phase': 1,
                 'defense_level': 1,
                 'attacks_count': 0,
@@ -239,7 +245,7 @@ def execute_attack(attack_id):
         async_queue_service.add_task(
             task_type='attack',
             func=_execute_dynamic_attack_async,
-            args=(attack_id, attack, session_id),
+            args=(attack_id, attack, session_id, target_image),
             priority=attack.intensity
         )
 

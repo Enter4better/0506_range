@@ -88,8 +88,9 @@ class AttackAgent(BaseAgent):
         
         return round(success_rate, 3)
 
-    def execute_attack(self, session_id: str, attack_type: str = None, intensity: int = 5) -> Dict:
-        """执行攻击 - 自动管理阶段升级"""
+    def execute_attack(self, session_id: str, attack_type: str = None, intensity: int = 5,
+                       target_image: str = '') -> Dict:
+        """执行攻击 - 自动管理阶段升级，对综合漏洞靶场应用成功率加成"""
         # 初始化会话数据
         if session_id not in self.session_data:
             self.session_data[session_id] = {
@@ -98,63 +99,92 @@ class AttackAgent(BaseAgent):
                 'successes': 0,
                 'started_at': datetime.now().isoformat()
             }
-        
+
         session = self.session_data[session_id]
         current_phase = session['phase']
-        
-        # 使用新的攻防概率模型计算成功率（默认防御等级1）
+
+        # 基础成功率（Kill Chain 模型）
         defense_level = session.get('defense_level', 1)
         success_rate = self.calculate_attack_success_rate(current_phase, intensity, defense_level)
+
+        # 综合漏洞靶场加成（这些靶场是刻意脆弱的，成功率应高于普通容器）
+        vuln_match = False
+        target_meta = None
+        try:
+            from .env_agent import COMPREHENSIVE_TARGETS
+            target_meta = COMPREHENSIVE_TARGETS.get(target_image)
+        except Exception:
+            pass
+
+        if target_meta:
+            success_rate += target_meta.get('base_rate_boost', 0)
+            if attack_type and attack_type in target_meta.get('vuln_types', []):
+                success_rate += target_meta.get('match_bonus', 0)
+                vuln_match = True
+            success_rate = min(0.95, success_rate)
+
         success = random.random() < success_rate
-        
+
         # 如果成功，增加成功计数
         if success:
             session['successes'] += 1
-        
+
         # 检查是否升级阶段（每成功2次升一级，最高6级）
         if session['successes'] >= 2 and current_phase < 6:
             old_phase = current_phase
             current_phase += 1
             session['phase'] = current_phase
             logger.info(f"[{session_id}] 攻击阶段升级: {old_phase} -> {current_phase} ({self.ATTACK_PHASES[current_phase]['name']})")
-        
+
         # 选择当前阶段的攻击类型
         if not attack_type:
             phase_attacks = self.PHASE_ATTACKS.get(current_phase, self.PHASE_ATTACKS[1])
             attack_type = random.choice(phase_attacks)
-        
-        # 使用 AI 生成攻击结果分析（攻击Agent使用高temperature增加创造性）
-        ai_analysis = self._ai_analyze_attack(attack_type, success, intensity, current_phase)
-        
+
+        # AI 攻击结果分析
+        ai_analysis = self._ai_analyze_attack(attack_type, success, intensity, current_phase,
+                                              target_meta=target_meta, vuln_match=vuln_match)
+
         result = {
             'status': 'success' if success else 'failed',
             'attack_type': attack_type,
             'attack_phase': current_phase,
             'phase_name': self.ATTACK_PHASES[current_phase]['name'],
             'intensity': intensity,
-            'success_rate': success_rate,
+            'success_rate': round(success_rate, 3),
+            'target_image': target_image,
+            'target_label': target_meta['label'] if target_meta else '',
+            'vuln_match': vuln_match,
             'ai_analysis': ai_analysis,
             'executed_at': datetime.now().isoformat()
         }
-        
+
         # 记录历史
         session['attempts'].append(result)
         self.attack_history.append(result)
-        
-        logger.info(f"[{session_id}] 攻击执行: 阶段{current_phase}-{attack_type} -> {'成功' if success else '失败'} (成功率={success_rate:.1%})")
-        
+
+        match_info = '(漏洞类型命中)' if vuln_match else ('(综合靶场)' if target_meta else '')
+        logger.info(f"[{session_id}] 攻击执行: 阶段{current_phase}-{attack_type} -> {'成功' if success else '失败'} "
+                    f"(成功率={success_rate:.1%}) {match_info}")
+
         return result
     
-    def _ai_analyze_attack(self, attack_type: str, success: bool, intensity: int, phase: int) -> str:
+    def _ai_analyze_attack(self, attack_type: str, success: bool, intensity: int, phase: int,
+                           target_meta: dict = None, vuln_match: bool = False) -> str:
         """使用 AI 分析攻击结果 - 攻击Agent使用高temperature(0.8)增加策略多样性"""
         phase_name = self.ATTACK_PHASES[phase]['name']
-        
+        target_ctx = ''
+        if target_meta:
+            target_ctx = f'\n靶场类型：{target_meta["label"]}（{target_meta["description"]}）'
+            if vuln_match:
+                target_ctx += f'\n漏洞类型命中：该靶场已知存在 {attack_type} 漏洞，攻击成功率提升'
+
         prompt = f"""你是一个红队攻击专家。刚刚执行了一次攻击，请分析结果：
 
 攻击类型：{attack_type}
 攻击阶段：{phase_name}（第{phase}阶段）
 攻击强度：{intensity}/10
-攻击结果：{'成功' if success else '失败'}
+攻击结果：{'成功' if success else '失败'}{target_ctx}
 
 请用2-3句话简要分析这次攻击的技术细节、成功/失败原因，以及下一步建议。"""
 
@@ -165,6 +195,8 @@ class AttackAgent(BaseAgent):
             logger.warning(f"AI分析失败，使用默认分析: {e}")
             if not success:
                 return f"{attack_type}攻击未成功，目标防御机制生效"
+            if vuln_match:
+                return f"{attack_type}攻击成功（命中靶场已知漏洞），已进入{phase_name}阶段"
             return f"{attack_type}攻击成功，已进入{phase_name}阶段，发现安全短板"
     
     def get_session_status(self, session_id: str) -> Dict:

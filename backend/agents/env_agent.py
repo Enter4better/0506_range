@@ -40,6 +40,44 @@ VERIFIED_IMAGES = {
     'raesene/bwapp':          {'env': {}, 'command': None, 'ports': [80]},
 }
 
+# 综合漏洞靶场元数据（DVWA / WebGoat / bWAPP 与普通容器的核心区别）
+# 这些镜像是"刻意脆弱"的，具有已知多类型漏洞，攻击成功率应更高，且可按漏洞类型推荐攻击手法
+COMPREHENSIVE_TARGETS = {
+    'vulnerables/web-dvwa': {
+        'label': 'DVWA综合靶场',
+        'short': 'DVWA',
+        'vuln_types': ['SQL注入', 'XSS攻击', 'CSRF攻击', '文件包含', '命令执行', '暴力破解'],
+        'default_port': 80,
+        'difficulty': '低-中',
+        'owasp_coverage': 'OWASP Top 10',
+        'description': 'Damn Vulnerable Web Application — 专为安全培训设计的多漏洞靶场',
+        'base_rate_boost': 0.18,   # 刻意脆弱：基础成功率 +18%
+        'match_bonus': 0.10,       # 攻击类型命中已知漏洞时额外 +10%
+    },
+    'webgoat/webgoat': {
+        'label': 'WebGoat综合靶场',
+        'short': 'WebGoat',
+        'vuln_types': ['SQL注入', 'XSS攻击', 'CSRF攻击', 'XXE注入', 'SSRF攻击', '权限提升'],
+        'default_port': 8080,
+        'difficulty': '中',
+        'owasp_coverage': 'OWASP Top 10 + A06~A10',
+        'description': 'OWASP WebGoat — 面向开发者的教学型多漏洞靶场（端口 8080）',
+        'base_rate_boost': 0.15,
+        'match_bonus': 0.10,
+    },
+    'raesene/bwapp': {
+        'label': 'bWAPP百漏靶场',
+        'short': 'bWAPP',
+        'vuln_types': ['SQL注入', 'XSS攻击', 'SSRF攻击', '文件包含', '命令执行', 'XXE注入'],
+        'default_port': 80,
+        'difficulty': '中-高',
+        'owasp_coverage': '100+ Web漏洞类型',
+        'description': 'Buggy Web Application — 覆盖 100+ 种漏洞类型的全面训练平台',
+        'base_rate_boost': 0.20,
+        'match_bonus': 0.12,
+    },
+}
+
 
 class EnvAgent(BaseAgent):
     """环境管理Agent - AI驱动的靶场资源编排"""

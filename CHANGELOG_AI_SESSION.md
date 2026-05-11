@@ -354,5 +354,82 @@ AI 生成逻辑（`env_agent.py` LLM prompt）：场景含 Web 漏洞靶场 → 
 
 ---
 
+## 会话六：综合漏洞靶场体系化区分
+
+### Q：DVWA/WebGoat/bWAPP 与普通容器有何本质区别？如何在攻防中体现？WebGoat 端口需自动显示 8080
+
+**分析：** DVWA / WebGoat / bWAPP 是"刻意脆弱"（intentionally vulnerable）的靶场，具有以下核心特点：
+
+1. **多漏洞类型**：每个靶场覆盖 6+ 种已知漏洞，对应 OWASP Top 10 的多个类别
+2. **攻击成功率更高**：因为这些系统有意不修补漏洞，真实攻击效果优于普通容器
+3. **漏洞类型匹配加成**：当选择的攻击类型命中靶场已知漏洞时，成功率进一步提升
+4. **默认端口不同**：WebGoat 运行在 8080，DVWA / bWAPP 运行在 80
+
+#### 各靶场特征对比
+
+| 靶场 | 端口 | 覆盖漏洞类型 | 难度 | OWASP 覆盖 | 成功率加成 |
+|------|:---:|------------|:---:|-----------|:---:|
+| DVWA | 80 | SQL注入、XSS、CSRF、文件包含、命令执行、暴力破解 | 低-中 | Top 10 | +18%（+10%命中时）|
+| WebGoat | **8080** | SQL注入、XSS、CSRF、XXE注入、SSRF、权限提升 | 中 | Top 10 + A06~A10 | +15%（+10%命中时）|
+| bWAPP | 80 | SQL注入、XSS、SSRF、文件包含、命令执行、XXE注入 | 中-高 | 100+ Web漏洞 | +20%（+12%命中时）|
+
+#### 实现方案
+
+**数据层**
+
+`COMPREHENSIVE_TARGETS` 字典（`backend/agents/env_agent.py`）：每个靶场镜像记录 `label`、`vuln_types`、`default_port`、`difficulty`、`base_rate_boost`、`match_bonus` 等字段，作为系统"元数据"被多处复用。
+
+**攻击逻辑层**
+
+`attack_agent.py execute_attack(target_image)` 新增参数：
+- 从 `COMPREHENSIVE_TARGETS` 查找目标元数据
+- 若命中，`success_rate += base_rate_boost`（刻意脆弱加成）
+- 若 `attack_type in vuln_types`，再加 `match_bonus`（漏洞类型精准命中）
+- AI 分析 prompt 中追加靶场描述和命中状态，生成更准确的分析
+- 结果中返回 `target_label`、`vuln_match` 字段供前端展示
+
+`attacks.py` execute 路由从请求体读取 `target_image`，传入异步任务，再传给 Agent
+
+**环境列表层**
+
+`compat.py /env/list`：从 `COMPREHENSIVE_TARGETS` 查找每个容器的镜像，注解 `is_comprehensive`、`vuln_label`、`vuln_types`、`vuln_difficulty`、`owasp_coverage`
+
+**前端共享层**
+
+`frontend/src/utils/targetMeta.js`（新文件）：
+- `COMPREHENSIVE_TARGETS` — 与后端同步的前端版本，含 `vulnTypes`、`defaultPort`、`color` 等
+- `getTargetMeta(image)` — 根据镜像名返回元数据，未命中返回 null
+- `IMAGE_PORT_HINTS` — 所有已知镜像的端口建议映射（13 个镜像，覆盖 webgoat 8080:8080 等）
+
+**靶场管理页（EnvManage.vue）**
+
+- 引入 `getTargetMeta` / `IMAGE_PORT_HINTS` 替代原 `IMAGE_PORT_DEFAULTS`（扩充至 13 种镜像）
+- 靶场列表新增"靶场类型/已知漏洞"列：综合靶场显示彩色 badge + 前 3 种漏洞类型标签
+- 创建弹窗：选中 DVWA/WebGoat/bWAPP 时，弹出说明卡片展示漏洞列表、难度、覆盖范围
+
+**攻击面板（AttackPanel.vue）**
+
+- 引入 `getTargetMeta`，跟踪 `selectedTargetImage` / `selectedTargetMeta`
+- 靶场选择弹窗新增"靶场类型/已知漏洞"列（综合靶场展示 badge + 漏洞标签）
+- 弹窗底部：点击行高亮时若为综合靶场，展示"推荐攻击类型"面板，可点击标签直接设置攻击类型
+- 攻击配置区：选中综合靶场后，在攻击强度上方显示"命中/未命中"漏洞类型指示条（绿色=命中，点击可切换攻击类型）
+- `launch()` 在调用 `/attack/execute` 时携带 `{ target_image }` 参数
+
+---
+
+## 本次变更文件汇总（会话六）
+
+| 文件 | 变更 |
+|------|------|
+| `backend/agents/env_agent.py` | 新增模块级 `COMPREHENSIVE_TARGETS` 字典（3个靶场，7字段） |
+| `backend/agents/attack_agent.py` | `execute_attack` 新增 `target_image` 参数，综合靶场成功率加成，AI分析上下文增强 |
+| `backend/routes/attacks.py` | `execute` 路由读取 `target_image`，传入异步任务函数 |
+| `backend/routes/compat.py` | 导入 `COMPREHENSIVE_TARGETS`，`/env/list` 为每个容器注解 5 个 vuln 字段 |
+| `frontend/src/utils/targetMeta.js` | 新文件，前端共享元数据（`COMPREHENSIVE_TARGETS` + `getTargetMeta` + `IMAGE_PORT_HINTS`） |
+| `frontend/src/views/EnvManage.vue` | 靶场类型列 + 创建对话框漏洞说明卡 + 端口自动填充扩展至 13 种镜像 |
+| `frontend/src/views/AttackPanel.vue` | 靶场选择弹窗漏洞列 + 推荐面板 + 攻击类型命中指示条 + 传 `target_image` |
+
+---
+
 *生成时间：2026-05-11*
 *AI 助手：Claude Sonnet 4.6（claude-sonnet-4-6）*

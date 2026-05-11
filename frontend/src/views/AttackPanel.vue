@@ -86,6 +86,25 @@
               </el-col>
             </el-row>
 
+            <!-- 选中综合靶场时显示漏洞匹配提示 -->
+            <el-form-item v-if="selectedTargetMeta" label=" ">
+              <div class="target-meta-hint">
+                <el-tag size="small" :type="selectedTargetMeta.color" style="margin-right: 8px;">
+                  {{ selectedTargetMeta.short }}
+                </el-tag>
+                <span style="font-size: 12px; color: var(--text-secondary);">
+                  {{ selectedTargetMeta.label }} — 推荐攻击类型：
+                </span>
+                <el-tag v-for="v in selectedTargetMeta.vulnTypes" :key="v"
+                  size="small"
+                  :type="form.type === v ? 'success' : 'info'"
+                  style="margin: 2px; cursor: pointer;"
+                  @click="form.type = v">
+                  {{ v }}{{ form.type === v ? ' ✓' : '' }}
+                </el-tag>
+              </div>
+            </el-form-item>
+
             <el-form-item label="攻击强度">
               <div class="intensity-wrapper">
                 <el-slider v-model="form.intensity" :min="1" :max="10" :marks="intensityMarks"
@@ -242,45 +261,74 @@
     </el-row>
 
     <!-- 选择靶场对话框：点击行高亮，Enter 确认选中 -->
-    <el-dialog v-model="targetDialogVisible" title="选择靶场（点击行高亮后按 Enter 确认）" width="1100px" class="tech-dialog"
+    <el-dialog v-model="targetDialogVisible" title="选择靶场（点击行高亮后按 Enter 确认）" width="1200px" class="tech-dialog"
       @keyup.enter="tableCurrentRow ? selectTargetConfirm(tableCurrentRow) : undefined">
-      <el-table :data="targets" stripe style="width: 100%;" size="small" v-loading="loadingTargets" max-height="400"
+      <el-table :data="targets" stripe style="width: 100%;" size="small" v-loading="loadingTargets" max-height="380"
         highlight-current-row @current-change="(row) => tableCurrentRow = row" @row-dblclick="selectTargetConfirm">
-        <el-table-column prop="name" label="名称" min-width="200" show-overflow-tooltip>
+        <el-table-column prop="name" label="名称" min-width="160" show-overflow-tooltip>
           <template #default="{ row }">
             <span style="color: var(--cyan); font-weight: 500;">{{ row.name }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="image" label="镜像" min-width="160" show-overflow-tooltip>
+        <el-table-column prop="image" label="镜像" min-width="150" show-overflow-tooltip>
           <template #default="{ row }">
             <el-tag size="small" type="info">{{ row.image }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="ports" label="端口映射" min-width="120">
+        <el-table-column label="靶场类型 / 已知漏洞" min-width="280">
+          <template #default="{ row }">
+            <template v-if="getTargetMeta(row.image)">
+              <el-tag size="small" :type="getTargetMeta(row.image).color" style="margin-right: 4px;">
+                {{ getTargetMeta(row.image).short }} · 综合靶场
+              </el-tag>
+              <el-tag v-for="v in getTargetMeta(row.image).vulnTypes.slice(0, 3)" :key="v"
+                size="small" type="warning" style="margin-right: 2px; font-size: 10px;">{{ v }}</el-tag>
+              <span v-if="getTargetMeta(row.image).vulnTypes.length > 3"
+                style="font-size: 10px; color: var(--text-muted);">+{{ getTargetMeta(row.image).vulnTypes.length - 3 }}种</span>
+            </template>
+            <span v-else style="font-size: 11px; color: var(--text-muted);">通用容器</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="ports" label="端口" width="110">
           <template #default="{ row }">
             <span style="color: var(--purple); font-family: monospace;">{{ row.ports || '-' }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="status" label="状态" width="90">
+        <el-table-column prop="status" label="状态" width="80">
           <template #default="{ row }">
             <el-tag :type="row.status === 'running' ? 'success' : 'danger'" size="small">
               {{ row.status === 'running' ? '运行中' : '已停止' }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="created" label="创建时间" width="160">
+        <el-table-column label="操作" width="70" fixed="right">
           <template #default="{ row }">
-            <span style="color: var(--text-muted); font-size: 12px;">{{ row.created || row.created_at || '-' }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="80" fixed="right">
-          <template #default="{ row }">
-            <el-button type="primary" size="small" @click="selectTargetConfirm(row)">
-              选择
-            </el-button>
+            <el-button type="primary" size="small" @click="selectTargetConfirm(row)">选择</el-button>
           </template>
         </el-table-column>
       </el-table>
+
+      <!-- 综合靶场推荐面板：选中行时实时显示 -->
+      <div v-if="tableCurrentRow && getTargetMeta(tableCurrentRow.image)" class="vuln-recommend-panel">
+        <div class="vrp-title">
+          🎯 {{ getTargetMeta(tableCurrentRow.image).label }} — 推荐攻击类型
+          <el-tag size="small" type="info" style="margin-left: 8px;">
+            {{ getTargetMeta(tableCurrentRow.image).owaspCoverage }}
+          </el-tag>
+          <el-tag size="small" style="margin-left: 4px;">
+            难度 {{ getTargetMeta(tableCurrentRow.image).difficulty }}
+          </el-tag>
+        </div>
+        <div class="vrp-desc">{{ getTargetMeta(tableCurrentRow.image).description }}</div>
+        <div class="vrp-tags">
+          <el-tag v-for="v in getTargetMeta(tableCurrentRow.image).vulnTypes" :key="v"
+            size="small" type="warning" style="margin: 3px; cursor: pointer;"
+            @click="applyVulnType(v)">
+            {{ v }} ↗
+          </el-tag>
+        </div>
+        <div class="vrp-hint">点击漏洞类型标签可直接设置为攻击类型</div>
+      </div>
     </el-dialog>
   </div>
 </template>
@@ -295,6 +343,7 @@ import {
   Refresh, CopyDocument, Close, Monitor, Document, DataLine
 } from '@element-plus/icons-vue'
 import request from '@/utils/request'
+import { getTargetMeta } from '@/utils/targetMeta'
 
 // 组件
 import StatCard from '@/components/StatCard.vue'
@@ -311,6 +360,8 @@ const resultStatus = ref('')
 const targetDialogVisible = ref(false)
 const targets = ref([])
 const selectedTargetStatus = ref(null)
+const selectedTargetImage = ref('')
+const selectedTargetMeta = ref(null)
 const attackLogs = ref([])
 const attackLogPage = ref(1)
 const attackLogPageSize = ref(10)
@@ -547,7 +598,9 @@ async function launch() {
 
     if (createRes.status === 'success') {
       const attackId = createRes.attack?.attack_id || Date.now()
-      const execRes = await request.post(`/attack/execute/${attackId}`)
+      const execRes = await request.post(`/attack/execute/${attackId}`, {
+          target_image: selectedTargetImage.value
+        })
 
       if (execRes.status === 'success') {
         const sessionId = execRes.session_id || ''
@@ -636,7 +689,6 @@ function selectTargetConfirm(target) {
   // 从端口映射中提取主机端口
   if (target.ports && target.ports !== '-') {
     const portStr = String(target.ports)
-    // 支持格式: "8080:80" 或 "8080" 或 "8080, 9090"
     const portMatch = portStr.match(/(\d+)/)
     if (portMatch) {
       form.value.port = portMatch[1]
@@ -644,8 +696,17 @@ function selectTargetConfirm(target) {
   }
   form.value.target = target.ip || 'localhost'
   selectedTargetStatus.value = target.status
+  selectedTargetImage.value = target.image || ''
+  selectedTargetMeta.value = getTargetMeta(target.image)
   targetDialogVisible.value = false
-  ElMessage.success(`已选择靶场: ${target.name}，端口: ${form.value.port}`)
+
+  const metaInfo = selectedTargetMeta.value ? ` (${selectedTargetMeta.value.label})` : ''
+  ElMessage.success(`已选择靶场: ${target.name}${metaInfo}，端口: ${form.value.port}`)
+}
+
+function applyVulnType(vulnType) {
+  form.value.type = vulnType
+  tableCurrentRow.value = null
 }
 
 
@@ -852,5 +913,52 @@ onUnmounted(() => {
   .form-actions {
     flex-wrap: wrap;
   }
+}
+
+/* 综合靶场漏洞匹配提示（攻击表单内） */
+.target-meta-hint {
+  padding: 10px 12px;
+  background: rgba(103, 194, 58, 0.06);
+  border: 1px solid rgba(103, 194, 58, 0.25);
+  border-radius: 6px;
+  width: 100%;
+  line-height: 2;
+}
+
+/* 靶场选择弹窗中的推荐面板 */
+.vuln-recommend-panel {
+  margin-top: 12px;
+  padding: 14px 16px;
+  background: rgba(230, 162, 60, 0.07);
+  border: 1px solid rgba(230, 162, 60, 0.3);
+  border-radius: 8px;
+}
+
+.vrp-title {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--el-color-warning);
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.vrp-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.vrp-tags {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.vrp-hint {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
 }
 </style>

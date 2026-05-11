@@ -108,9 +108,23 @@
             <span style="color: var(--cyan); font-weight: 500;">{{ row.name }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="image" label="镜像" min-width="120">
+        <el-table-column prop="image" label="镜像" min-width="150">
           <template #default="{ row }">
             <el-tag size="small" type="info">{{ row.image }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="靶场类型" min-width="200">
+          <template #default="{ row }">
+            <template v-if="getTargetMeta(row.image)">
+              <el-tag size="small" :type="getTargetMeta(row.image).color" style="margin-right: 4px;">
+                {{ getTargetMeta(row.image).short }}
+              </el-tag>
+              <el-tag v-for="v in getTargetMeta(row.image).vulnTypes.slice(0, 3)" :key="v"
+                size="small" type="info" style="margin-right: 3px; font-size: 10px;">{{ v }}</el-tag>
+              <span v-if="getTargetMeta(row.image).vulnTypes.length > 3"
+                style="font-size: 10px; color: var(--text-muted);">+{{ getTargetMeta(row.image).vulnTypes.length - 3 }}</span>
+            </template>
+            <span v-else style="font-size: 11px; color: var(--text-muted);">通用容器</span>
           </template>
         </el-table-column>
         <el-table-column prop="ports" label="端口映射" min-width="100">
@@ -185,6 +199,28 @@
           </el-input>
           <div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">格式: 主机端口:容器端口</div>
         </el-form-item>
+
+        <!-- 综合漏洞靶场说明（选中 DVWA / WebGoat / bWAPP 时显示） -->
+        <el-form-item v-if="getTargetMeta(createForm.image)" label=" ">
+          <div class="vuln-hint-box">
+            <div style="font-weight: 600; margin-bottom: 6px; color: var(--el-color-warning);">
+              🎯 {{ getTargetMeta(createForm.image).label }}
+            </div>
+            <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px;">
+              {{ getTargetMeta(createForm.image).description }}
+            </div>
+            <div style="margin-bottom: 4px; font-size: 11px; color: var(--text-muted);">已知漏洞类型（可直接发起对应攻击）：</div>
+            <div>
+              <el-tag v-for="v in getTargetMeta(createForm.image).vulnTypes" :key="v"
+                size="small" type="warning" style="margin: 2px;">{{ v }}</el-tag>
+            </div>
+            <div style="margin-top: 8px; font-size: 11px; color: var(--text-muted);">
+              覆盖范围：{{ getTargetMeta(createForm.image).owaspCoverage }} ·
+              难度：{{ getTargetMeta(createForm.image).difficulty }}
+            </div>
+          </div>
+        </el-form-item>
+
         <!-- 靶场名称自动生成，无需用户输入 -->
 
       </el-form>
@@ -204,6 +240,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Setting, Plus, Refresh, Delete, Monitor, CircleCheck, Warning, DataLine, Box, Loading, Download } from '@element-plus/icons-vue'
 
 import request from '../utils/request'
+import { COMPREHENSIVE_TARGETS, getTargetMeta, IMAGE_PORT_HINTS } from '@/utils/targetMeta'
 
 const targets = ref([])
 const loading = ref(true)
@@ -218,12 +255,9 @@ const createForm = reactive({
 
 let refreshInterval = null
 
-// 部分镜像使用非标准端口，选择后自动更新端口建议
-const IMAGE_PORT_DEFAULTS = {
-  'webgoat/webgoat': '8080:8080',
-}
+// 选择镜像时自动更新端口建议（覆盖所有已知镜像）
 watch(() => createForm.image, (img) => {
-  createForm.port = IMAGE_PORT_DEFAULTS[img] || '8080:80'
+  createForm.port = IMAGE_PORT_HINTS[img] ?? '8080:80'
 })
 
 // 获取靶场列表
@@ -484,5 +518,13 @@ onUnmounted(() => {
 
 .stat-info .el-statistic__title {
   color: #409eff;
+}
+
+.vuln-hint-box {
+  background: rgba(230, 162, 60, 0.08);
+  border: 1px solid rgba(230, 162, 60, 0.3);
+  border-radius: 8px;
+  padding: 12px 14px;
+  width: 100%;
 }
 </style>
