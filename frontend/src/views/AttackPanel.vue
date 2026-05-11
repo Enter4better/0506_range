@@ -597,12 +597,14 @@ async function launch() {
     })
 
     if (createRes.status === 'success') {
+      stats.total++
       const attackId = createRes.attack?.attack_id || Date.now()
       const execRes = await request.post(`/attack/execute/${attackId}`, {
           target_image: selectedTargetImage.value
         })
 
       if (execRes.status === 'success') {
+        stats.running++
         const sessionId = execRes.session_id || ''
 
         // 启动攻防进度动画
@@ -633,6 +635,7 @@ async function launch() {
     ElMessage.error('攻击执行失败')
   } finally {
     loading.value = false
+    loadStats()
   }
 }
 

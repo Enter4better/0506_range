@@ -330,26 +330,36 @@
             </template>
             <div style="padding: 8px 0;">
               <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 16px; line-height: 1.6;">
-                配置防火墙、入侵检测、WAF等防御规则，保护靶场环境免受攻击。
+                针对指定攻击类型启用防御规则，规则在攻防演练中自动生效并提升拦截率。
               </p>
               <el-form label-width="72px" size="small">
-                <el-form-item label="防御类型">
-                  <el-select v-model="defenseType" style="width: 100%;">
-                    <el-option-group label="网络防御">
-                      <el-option label="防火墙规则" value="firewall" />
-                      <el-option label="入侵检测IDS" value="ids" />
-                      <el-option label="WAF防护" value="waf" />
+                <el-form-item label="防御目标">
+                  <el-select v-model="defenseType" style="width: 100%;" filterable>
+                    <el-option-group label="Web漏洞防御">
+                      <el-option label="SQL注入" value="SQL注入" />
+                      <el-option label="XSS攻击" value="XSS攻击" />
+                      <el-option label="CSRF攻击" value="CSRF攻击" />
+                      <el-option label="文件包含" value="文件包含" />
+                      <el-option label="命令执行" value="命令执行" />
+                      <el-option label="SSRF攻击" value="SSRF攻击" />
+                      <el-option label="XXE注入" value="XXE注入" />
                     </el-option-group>
-                    <el-option-group label="系统防御">
-                      <el-option label="端口封锁" value="port_block" />
-                      <el-option label="IP黑名单" value="ip_blacklist" />
+                    <el-option-group label="系统层防御">
+                      <el-option label="权限提升" value="权限提升" />
+                      <el-option label="容器逃逸" value="容器逃逸" />
+                      <el-option label="反弹Shell" value="反弹Shell" />
+                    </el-option-group>
+                    <el-option-group label="网络攻击防御">
+                      <el-option label="端口扫描" value="端口扫描" />
+                      <el-option label="暴力破解" value="暴力破解" />
+                      <el-option label="中间人攻击" value="中间人攻击" />
+                    </el-option-group>
+                    <el-option-group label="APT防御">
+                      <el-option label="后门植入" value="后门植入" />
+                      <el-option label="横向移动" value="横向移动" />
+                      <el-option label="数据外传" value="数据外传" />
                     </el-option-group>
                   </el-select>
-                </el-form-item>
-                <el-form-item label="防护端口">
-                  <el-input v-model="defensePort" placeholder="8080">
-                    <template #prepend>PORT</template>
-                  </el-input>
                 </el-form-item>
                 <el-form-item label="防御强度">
                   <el-slider v-model="defenseIntensity" :min="1" :max="10" :marks="intensityMarks" />
@@ -361,13 +371,16 @@
                   <Umbrella />
                 </el-icon> 启用防御
               </el-button>
-              <div style="margin-top: 14px;">
-                <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 8px;">当前防御</div>
+              <div v-if="recentDefenses.length" style="margin-top: 14px;">
+                <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 8px;">已启用规则</div>
                 <el-space wrap>
-                  <el-tag type="success" size="small" effect="dark">防火墙 ✓</el-tag>
-                  <el-tag type="success" size="small" effect="dark">IDS ✓</el-tag>
-                  <el-tag type="warning" size="small" effect="plain">WAF</el-tag>
+                  <el-tag v-for="d in recentDefenses" :key="d.type" type="success" size="small" effect="dark">
+                    {{ d.type }} ✓
+                  </el-tag>
                 </el-space>
+              </div>
+              <div v-else style="margin-top: 14px; font-size: 12px; color: var(--text-muted);">
+                启用后规则将在防御页面可见
               </div>
             </div>
           </el-card>
@@ -399,9 +412,9 @@ const aiLoading = ref(false)
 const attackType = ref('SQL注入')
 const targetPort = ref('8080')
 const attackIntensity = ref(5)
-const defenseType = ref('firewall')
-const defensePort = ref('8080')
+const defenseType = ref('SQL注入')
 const defenseIntensity = ref(5)
+const recentDefenses = ref([])
 const recentAttacks = ref([])
 const activeTargets = ref(0)
 const activeRules = ref(0)
@@ -618,6 +631,9 @@ async function startDefense() {
     })
     ElMessage.success('防御规则已启用')
     activeRules.value++
+    if (!recentDefenses.value.find(d => d.type === defenseType.value)) {
+      recentDefenses.value.unshift({ type: defenseType.value })
+    }
     await loadStats()
   } catch (e) {
     ElMessage.error('防御启用失败: ' + (e.response?.data?.msg || e.message))
@@ -847,5 +863,11 @@ onUnmounted(() => {
 .config-value {
   color: var(--text-primary);
   font-weight: 600;
+}
+
+/* 字数统计去掉白色底色 */
+:deep(.el-input__count) {
+  background: transparent !important;
+  color: rgba(255, 255, 255, 0.5) !important;
 }
 </style>

@@ -603,6 +603,11 @@ onMounted(() => {
     border-color: var(--cyan);
 }
 
+.desc-input :deep(.el-input__count) {
+    background: transparent !important;
+    color: rgba(255, 255, 255, 0.5) !important;
+}
+
 .quick-templates {
     margin-bottom: 20px;
 }
