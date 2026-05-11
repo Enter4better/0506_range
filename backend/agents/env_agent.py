@@ -20,17 +20,24 @@ from models.target import Target
 _TRAINING_FILE = Path(__file__).parent / 'training_examples.json'
 
 # 经过验证的可用镜像白名单及其必要配置
+# ── 基础设施镜像（干净官方镜像，无预置漏洞） ──────────────────────────────
+# ── 专用漏洞靶场镜像（需提前 docker pull，见 INSTALL.md） ─────────────────
 VERIFIED_IMAGES = {
-    'nginx:alpine':      {'env': {}, 'command': None, 'ports': [80]},
-    'httpd:alpine':      {'env': {}, 'command': None, 'ports': [80]},
-    'php:8.1-apache':    {'env': {}, 'command': None, 'ports': [80]},
-    'mysql:8.0':         {'env': {'MYSQL_ROOT_PASSWORD': 'Range@123', 'MYSQL_DATABASE': 'testdb'}, 'command': None, 'ports': [3306]},
-    'redis:alpine':      {'env': {}, 'command': None, 'ports': [6379]},
-    'postgres:15-alpine':{'env': {'POSTGRES_PASSWORD': 'Range@123'}, 'command': None, 'ports': [5432]},
-    'ubuntu:22.04':      {'env': {}, 'command': 'sleep infinity', 'ports': [22]},
-    'python:3.11-slim':  {'env': {}, 'command': 'sleep infinity', 'ports': []},
-    'node:18-alpine':    {'env': {}, 'command': 'sleep infinity', 'ports': [3000]},
-    'alpine:latest':     {'env': {}, 'command': 'sleep infinity', 'ports': []},
+    # 基础设施
+    'nginx:alpine':           {'env': {}, 'command': None, 'ports': [80]},
+    'httpd:alpine':           {'env': {}, 'command': None, 'ports': [80]},
+    'php:8.1-apache':         {'env': {}, 'command': None, 'ports': [80]},
+    'mysql:8.0':              {'env': {'MYSQL_ROOT_PASSWORD': 'Range@123', 'MYSQL_DATABASE': 'testdb'}, 'command': None, 'ports': [3306]},
+    'redis:alpine':           {'env': {}, 'command': None, 'ports': [6379]},
+    'postgres:15-alpine':     {'env': {'POSTGRES_PASSWORD': 'Range@123'}, 'command': None, 'ports': [5432]},
+    'ubuntu:22.04':           {'env': {}, 'command': 'sleep infinity', 'ports': [22]},
+    'python:3.11-slim':       {'env': {}, 'command': 'sleep infinity', 'ports': []},
+    'node:18-alpine':         {'env': {}, 'command': 'sleep infinity', 'ports': [3000]},
+    'alpine:latest':          {'env': {}, 'command': 'sleep infinity', 'ports': []},
+    # 专用漏洞靶场（需提前 docker pull）
+    'vulnerables/web-dvwa':   {'env': {}, 'command': None, 'ports': [80]},
+    'webgoat/webgoat':        {'env': {}, 'command': None, 'ports': [8080]},
+    'raesene/bwapp':          {'env': {}, 'command': None, 'ports': [80]},
 }
 
 
@@ -76,7 +83,37 @@ class EnvAgent(BaseAgent):
             ],
             'vulnerabilities': ['容器逃逸', '镜像漏洞', '特权容器滥用'],
             'network': {'type': 'bridge', 'subnet': '172.22.0.0/16'}
-        }
+        },
+        'dvwa': {
+            'name': 'DVWA 综合漏洞靶场',
+            'description': 'Damn Vulnerable Web Application — 涵盖 SQL 注入、XSS、CSRF、文件上传、命令执行等 OWASP Top 10 漏洞',
+            'components': [
+                {'type': 'container', 'name': 'dvwa-target', 'image': 'vulnerables/web-dvwa',
+                 'ports': [80], 'env': {}, 'command': None},
+            ],
+            'vulnerabilities': ['SQL注入', 'XSS跨站脚本', 'CSRF', '文件上传', '命令执行', '暴力破解'],
+            'network': {'type': 'bridge', 'subnet': '172.23.0.0/16'}
+        },
+        'webgoat': {
+            'name': 'WebGoat OWASP 教学靶场',
+            'description': 'OWASP WebGoat — 面向开发者的安全培训平台，含注入、认证缺陷、访问控制、密码学等模块',
+            'components': [
+                {'type': 'container', 'name': 'webgoat-target', 'image': 'webgoat/webgoat',
+                 'ports': [8080], 'env': {}, 'command': None},
+            ],
+            'vulnerabilities': ['SQL注入', 'XXE注入', 'SSRF攻击', '不安全的反序列化', '访问控制缺陷'],
+            'network': {'type': 'bridge', 'subnet': '172.24.0.0/16'}
+        },
+        'bwapp': {
+            'name': 'bWAPP 百漏靶场',
+            'description': 'Buggy Web Application — 超过 100 种 Web 漏洞的全覆盖训练平台，含 OWASP Top 10 全类型',
+            'components': [
+                {'type': 'container', 'name': 'bwapp-target', 'image': 'raesene/bwapp',
+                 'ports': [80], 'env': {}, 'command': None},
+            ],
+            'vulnerabilities': ['SQL注入', 'XSS跨站脚本', '文件包含', 'SSRF攻击', '命令执行', 'XXE注入'],
+            'network': {'type': 'bridge', 'subnet': '172.25.0.0/16'}
+        },
     }
 
     def __init__(self, user_id: str = None):
@@ -217,8 +254,9 @@ class EnvAgent(BaseAgent):
 1. ubuntu:22.04、python:3.11-slim、node:18-alpine、alpine:latest 必须设置 command 为 "sleep infinity"
 2. mysql:8.0 必须设置 env.MYSQL_ROOT_PASSWORD
 3. postgres:15-alpine 必须设置 env.POSTGRES_PASSWORD
-4. components 中每个组件必须有 name（英文小写连字符）、image、ports、env、command 五个字段
-5. 组件数量 2~4 个，不要过多
+4. vulnerables/web-dvwa、webgoat/webgoat、raesene/bwapp 是自包含漏洞靶场，env 和 command 均留空，端口分别为 80、8080、80
+5. components 中每个组件必须有 name（英文小写连字符）、image、ports、env、command 五个字段
+6. 组件数量 2~4 个，不要过多
 
 请返回纯 JSON，格式如下，不要有任何解释文字：
 {{

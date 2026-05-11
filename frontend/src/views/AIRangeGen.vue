@@ -37,7 +37,8 @@
                     <div class="template-label">快速模板：</div>
                     <div class="template-tags">
                         <el-tag v-for="(tmpl, idx) in templates" :key="idx"
-                            :type="idx === 0 ? 'primary' : idx === 1 ? 'danger' : 'warning'" class="template-tag"
+                            :type="['primary','danger','warning','success','info','danger'][idx % 6]"
+                            class="template-tag"
                             @click="applyTemplate(tmpl)">
                             {{ tmpl.name }}
                         </el-tag>
