@@ -29,12 +29,18 @@ from agents.env_agent import COMPREHENSIVE_TARGETS
 
 compat_bp = Blueprint('compat', __name__, url_prefix='/api')
 
-# 需要前台保持进程的镜像 → 启动命令（重建容器时必须传入，否则容器立即退出）
+# 需要前台保持进程的镜像 → 启动命令（不传则容器立即退出）
 _IMAGE_REQUIRED_COMMANDS = {
     'ubuntu:22.04':      'sleep infinity',
     'python:3.11-slim':  'sleep infinity',
     'node:18-alpine':    'sleep infinity',
     'alpine:latest':     'sleep infinity',
+}
+
+# 需要强制注入的环境变量（不传则容器初始化失败）
+_IMAGE_REQUIRED_ENVS = {
+    'postgres:15-alpine': {'POSTGRES_PASSWORD': 'Range@123'},
+    'mysql:8.0':          {'MYSQL_ROOT_PASSWORD': 'Range@123', 'MYSQL_DATABASE': 'testdb'},
 }
 
 # Docker客户端缓存
@@ -477,16 +483,18 @@ def compat_env_create():
         
         port_bindings = {f'{container_port}/tcp': ('127.0.0.1', host_port)}
         
-        current_app.logger.info(f"创建容器: name={name}, image={image}, ports={port_bindings}")
-        
+        cmd = _IMAGE_REQUIRED_COMMANDS.get(image)
+        req_env = _IMAGE_REQUIRED_ENVS.get(image, {})
+
+        current_app.logger.info(f"创建容器: name={name}, image={image}, ports={port_bindings}, cmd={cmd}")
+
         try:
-            container = client.containers.run(
-                image,
-                name=name,
-                detach=True,
-                ports=port_bindings,
-                remove=False
-            )
+            run_kwargs = {'name': name, 'detach': True, 'ports': port_bindings, 'remove': False}
+            if cmd:
+                run_kwargs['command'] = cmd
+            if req_env:
+                run_kwargs['environment'] = req_env
+            container = client.containers.run(image, **run_kwargs)
         except docker.errors.ImageNotFound:
             return jsonify({'status': 'error', 'msg': f'镜像 {image} 不存在，请先执行: docker pull {image}'}), 400
         except docker.errors.APIError as e:

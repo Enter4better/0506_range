@@ -22,6 +22,19 @@ from config import DOCKER_CONFIG
 
 targets_bp = Blueprint('targets', __name__, url_prefix='/api/env')
 
+_IMAGE_REQUIRED_COMMANDS = {
+    'ubuntu:22.04':      'sleep infinity',
+    'python:3.11-slim':  'sleep infinity',
+    'node:18-alpine':    'sleep infinity',
+    'alpine:latest':     'sleep infinity',
+}
+
+_IMAGE_REQUIRED_ENVS = {
+    'postgres:15-alpine': {'POSTGRES_PASSWORD': 'Range@123'},
+    'mysql:8.0':          {'MYSQL_ROOT_PASSWORD': 'Range@123', 'MYSQL_DATABASE': 'testdb'},
+}
+
+
 
 def sanitize_container_name(name: str) -> str:
     """清理容器名称，符合Docker命名规则"""
@@ -184,10 +197,21 @@ def create_target():
                     port_bindings = {f'{container_port}/tcp': ('127.0.0.1', attempt_port)}
                     env_list = [e.strip() for e in env_vars.split(',')] if env_vars else None
                     
-                    container = docker_client.containers.run(
-                        original_image, name=container_name, detach=True, ports=port_bindings,
-                        environment=env_list, remove=False
-                    )
+                    req_env = dict(_IMAGE_REQUIRED_ENVS.get(original_image, {}))
+                    if env_list:
+                        for e in env_list:
+                            if '=' in e:
+                                k, v = e.split('=', 1)
+                                req_env[k.strip()] = v.strip()
+                    cmd = _IMAGE_REQUIRED_COMMANDS.get(original_image)
+                    run_kwargs = {
+                        'name': container_name, 'detach': True,
+                        'ports': port_bindings, 'remove': False,
+                        'environment': req_env if req_env else None,
+                    }
+                    if cmd:
+                        run_kwargs['command'] = cmd
+                    container = docker_client.containers.run(original_image, **run_kwargs)
                     assigned_port = attempt_port
                     break
                 except Exception as port_err:

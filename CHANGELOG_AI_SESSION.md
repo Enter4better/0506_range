@@ -536,3 +536,44 @@ AI 生成逻辑（`env_agent.py` LLM prompt）：场景含 Web 漏洞靶场 → 
 
 *生成时间：2026-05-11*
 *AI 助手：Claude Sonnet 4.6（claude-sonnet-4-6）*
+
+---
+
+## 会话十：Postgres/Ubuntu/Python/Node 靶场无法启动
+
+### Q：Postgres/ubuntu/python3.11/node18 这几个类型靶场无法启动
+
+**根本原因：**
+
+`compat.py` 的 `compat_env_create()` 和 `targets.py` 的 `create_target()` 在调用 `containers.run()` 时均未传入特定镜像所需的 `command` 和 `environment` 参数：
+
+| 镜像 | 缺少什么 | 后果 |
+|------|----------|------|
+| ubuntu:22.04 | `command: sleep infinity` | 容器启动后无前台进程，立即退出 |
+| python:3.11-slim | `command: sleep infinity` | 同上 |
+| node:18-alpine | `command: sleep infinity` | 同上 |
+| alpine:latest | `command: sleep infinity` | 同上 |
+| postgres:15-alpine | `POSTGRES_PASSWORD` 环境变量 | 数据库初始化失败，容器崩溃退出 |
+
+`_IMAGE_REQUIRED_COMMANDS` 字典在 `compat.py` 中已定义但从未传给 `containers.run()`。
+
+**修复方案：**
+
+**`backend/routes/compat.py`**
+- 新增 `_IMAGE_REQUIRED_ENVS` 字典（postgres/mysql 强制注入密码）
+- `containers.run()` 改为关键字参数展开，自动注入 `command` 和 `environment`
+
+**`backend/routes/targets.py`**
+- 同步新增 `_IMAGE_REQUIRED_COMMANDS` + `_IMAGE_REQUIRED_ENVS` 两个字典
+- `containers.run()` 同样注入 command 和合并后的 env（用户自定义 env 优先级高于默认值）
+
+**修改文件：**
+
+| 文件 | 变更 |
+|------|------|
+| `backend/routes/compat.py` | 新增 `_IMAGE_REQUIRED_ENVS`，`containers.run()` 注入 command + env |
+| `backend/routes/targets.py` | 新增两个字典，`containers.run()` 注入 command + 合并 env |
+
+---
+
+*生成时间：2026-05-11*
