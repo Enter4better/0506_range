@@ -241,9 +241,11 @@
       </el-col>
     </el-row>
 
-    <!-- 选择靶场对话框 -->
-    <el-dialog v-model="targetDialogVisible" title="选择靶场" width="1100px" class="tech-dialog">
-      <el-table :data="targets" stripe style="width: 100%;" size="small" v-loading="loadingTargets" max-height="400">
+    <!-- 选择靶场对话框：点击行高亮，Enter 确认选中 -->
+    <el-dialog v-model="targetDialogVisible" title="选择靶场（点击行高亮后按 Enter 确认）" width="1100px" class="tech-dialog"
+      @keyup.enter="tableCurrentRow ? selectTargetConfirm(tableCurrentRow) : undefined">
+      <el-table :data="targets" stripe style="width: 100%;" size="small" v-loading="loadingTargets" max-height="400"
+        highlight-current-row @current-change="(row) => tableCurrentRow = row" @row-dblclick="selectTargetConfirm">
         <el-table-column prop="name" label="名称" min-width="200" show-overflow-tooltip>
           <template #default="{ row }">
             <span style="color: var(--cyan); font-weight: 500;">{{ row.name }}</span>
@@ -302,6 +304,7 @@ import AttackTimeline from '@/components/AttackTimeline.vue'
 // 状态
 const loading = ref(false)
 const loadingTargets = ref(false)
+const tableCurrentRow = ref(null)
 const result = ref('')
 const resultType = ref('info')
 const resultStatus = ref('')

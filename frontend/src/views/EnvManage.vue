@@ -152,7 +152,8 @@
     </el-card>
 
     <!-- 创建靶场弹窗 -->
-    <el-dialog v-model="showCreateModal" title="创建新靶场" width="500px" class="tech-dialog">
+    <el-dialog v-model="showCreateModal" title="创建新靶场" width="500px" class="tech-dialog"
+      @keyup.enter="createForm.image && createForm.port ? createTarget() : undefined">
       <el-form :model="createForm" label-width="100px" size="small">
         <el-form-item label="选择镜像" required>
           <el-select v-model="createForm.image" placeholder="请选择镜像" filterable style="width: 100%;">

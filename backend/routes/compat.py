@@ -28,6 +28,14 @@ from config import DOCKER_CONFIG
 
 compat_bp = Blueprint('compat', __name__, url_prefix='/api')
 
+# 需要前台保持进程的镜像 → 启动命令（重建容器时必须传入，否则容器立即退出）
+_IMAGE_REQUIRED_COMMANDS = {
+    'ubuntu:22.04':      'sleep infinity',
+    'python:3.11-slim':  'sleep infinity',
+    'node:18-alpine':    'sleep infinity',
+    'alpine:latest':     'sleep infinity',
+}
+
 # Docker客户端缓存
 _docker_client = None
 
@@ -694,12 +702,14 @@ def compat_env_start(target_id):
                 
                 port_bindings = {f'{container_port}/tcp': ('127.0.0.1', host_port)}
                 
+                required_cmd = _IMAGE_REQUIRED_COMMANDS.get(image)
                 new_container = client.containers.run(
-                    image, 
-                    name=recreate_name, 
+                    image,
+                    name=recreate_name,
                     detach=True,
-                    ports=port_bindings, 
-                    remove=False
+                    ports=port_bindings,
+                    remove=False,
+                    command=required_cmd
                 )
                 container = new_container
                 current_app.logger.info(f"[{log_tag}] 容器已重新创建: {new_container.name}")
@@ -757,10 +767,12 @@ def compat_env_start(target_id):
                     except Exception:
                         pass
                     docker_client = get_docker_client()
+                    required_cmd = _IMAGE_REQUIRED_COMMANDS.get(image)
                     new_container = docker_client.containers.run(
                         image, name=old_name, detach=True,
                         ports={f'{container_port}/tcp': ('127.0.0.1', new_host_port)},
-                        remove=False
+                        remove=False,
+                        command=required_cmd
                     )
                     container = new_container
                     cfg['host_port'] = new_host_port

@@ -273,7 +273,8 @@
 
     <!-- 添加漏洞弹窗 -->
     <el-dialog v-model="vulnDialogVisible" title="选择漏洞类型" width="520px" class="tech-dialog"
-        :close-on-click-modal="false" align-center>
+        :close-on-click-modal="false" align-center
+        @keyup.enter="pendingVulns.length > 0 ? confirmAddVuln() : undefined">
         <div class="vuln-dialog-body">
             <div class="preset-label">
                 点击选择（已选 <span class="select-count">{{ pendingVulns.length }}</span> 项），再次点击取消选择
