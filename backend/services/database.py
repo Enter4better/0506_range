@@ -173,7 +173,7 @@ class DatabaseService:
                 ('admin', 'admin@example.com', 'admin'),
                 ('user',  'user@example.com',  'user'),
             ]:
-                hashed = generate_password_hash('123456')
+                hashed = generate_password_hash('123456', method='pbkdf2:sha256')
                 cursor.execute("""
                     INSERT OR IGNORE INTO users (username, password, email, role)
                     VALUES (?, ?, ?, ?)

@@ -124,7 +124,7 @@ class User:
                     """, (self.username, self.email, self.role, self.last_login, self.user_id))
                 else:
                     # 创建新用户
-                    hashed_password = generate_password_hash(self.password)
+                    hashed_password = generate_password_hash(self.password, method='pbkdf2:sha256')
                     cursor.execute("""
                         INSERT INTO users (username, password, email, role)
                         VALUES (?, ?, ?, ?)
