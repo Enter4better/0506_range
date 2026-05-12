@@ -40,6 +40,8 @@ npm-debug.log*
 # Database files
 *.db
 backend/data/*.db
+# 主数据库跟踪（含默认用户数据）
+!backend/data/ai_security_range.db
 
 # Duplicate directories
 backend/backend/

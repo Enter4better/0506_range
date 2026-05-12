@@ -143,7 +143,7 @@ def login():
                 'username': user.username,
                 'email': user.email,
                 'role': user.role,
-                'last_login': user.last_login.isoformat() if user.last_login else None
+                'last_login': str(user.last_login) if user.last_login else None
             }
         }), 200
         
@@ -171,7 +171,7 @@ def get_profile():
                 'email': user.email,
                 'role': user.role,
                 'created_at': user.created_at.isoformat(),
-                'last_login': user.last_login.isoformat() if user.last_login else None
+                'last_login': str(user.last_login) if user.last_login else None
             }
         }), 200
         
