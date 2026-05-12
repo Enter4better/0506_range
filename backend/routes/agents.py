@@ -10,6 +10,7 @@ from datetime import datetime
 
 from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
+from routes.auth_utils import require_admin
 
 backend_dir = Path(__file__).parent.parent
 if str(backend_dir) not in sys.path:
@@ -433,6 +434,7 @@ def get_agents_status():
 # ==================== AI靶场自动生成 API ====================
 
 @agents_bp.route('/ai-range/generate', methods=['POST'])
+@require_admin
 def ai_generate_range():
     """AI靶场自动生成 - 根据自然语言描述自动构建靶场"""
     try:
@@ -462,6 +464,7 @@ def ai_generate_range():
 
 
 @agents_bp.route('/ai-range/deploy', methods=['POST'])
+@require_admin
 def ai_deploy_range():
     """AI靶场自动部署 - 根据确认的配置创建靶场环境"""
     try:

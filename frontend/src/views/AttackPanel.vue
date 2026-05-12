@@ -594,7 +594,6 @@ async function launch() {
     })
 
     if (createRes.status === 'success') {
-      stats.total++
       const attackId = createRes.attack?.attack_id || Date.now()
       const execRes = await request.post(`/attack/execute/${attackId}`, {
           target_image: selectedTargetImage.value
@@ -651,24 +650,15 @@ async function loadAttackHistory(page = attackLogPage.value) {
 }
 
 async function loadStats() {
-  // 总攻击数：与防御页面使用相同数据源（防御日志计数）
-  try {
-    const defRes = await request.get('/agents/defense/status')
-    if (defRes.status === 'success') {
-      stats.total = defRes.data?.total_attacks || 0
-    }
-  } catch (e) {
-    console.error('加载防御状态失败', e)
-  }
-  // 成功攻击：从攻击记录中统计已处理条数（completed + failed）
   try {
     const listRes = await request.get('/attack/list', { params: { page: 1, limit: 1000 } })
     if (listRes.status === 'success') {
+      stats.total = listRes.total || 0
       const attacks = listRes.attacks || []
       stats.success = attacks.filter(a => a.status === 'completed' || a.status === 'failed' || a.status === 'blocked').length
     }
   } catch (e) {
-    console.error('加载攻击记录失败', e)
+    console.error('加载攻击统计失败', e)
   }
 }
 

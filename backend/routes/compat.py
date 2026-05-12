@@ -5,6 +5,7 @@
 """
 from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
+from routes.auth_utils import require_admin
 import sys
 from pathlib import Path
 import docker
@@ -443,6 +444,7 @@ def compat_env_list():
 
 
 @compat_bp.route('/env/create', methods=['POST'])
+@require_admin
 def compat_env_create():
     """创建环境（兼容前端）"""
     try:
@@ -607,6 +609,7 @@ def compat_env_update(target_id):
 
 
 @compat_bp.route('/env/delete/<target_id>', methods=['POST'])
+@require_admin
 def compat_env_delete(target_id):
     """删除环境（兼容前端）"""
     try:

@@ -40,6 +40,7 @@ const routes = [
     path: "/ai-range",
     name: "AIRangeGen",
     component: () => import("../views/AIRangeGen.vue"),
+    meta: { requiresAdmin: true },
   },
   {
     path: "/login",
@@ -52,7 +53,7 @@ const routes = [
 // 靶场放在控制台后面第一个
 export const navLinks = [
   { name: "控制台", path: "/", icon: House },
-  { name: "AI靶场", path: "/ai-range", icon: MagicStick },
+  { name: "AI靶场", path: "/ai-range", icon: MagicStick, adminOnly: true },
   { name: "靶场", path: "/env", icon: Setting },
   { name: "攻击", path: "/attack", icon: Aim },
   { name: "防御", path: "/defense", icon: Umbrella },
@@ -65,11 +66,19 @@ const router = createRouter({
   routes,
 });
 
-// 登录拦截（跳过 /login）
+// 登录拦截 + 管理员页面拦截
 router.beforeEach((to) => {
-  const user = localStorage.getItem("cyber_user");
-  if (to.path !== "/login" && !user) {
+  const userStr = localStorage.getItem("cyber_user");
+  if (to.path !== "/login" && !userStr) {
     return "/login";
+  }
+  if (to.meta?.requiresAdmin && userStr) {
+    try {
+      const user = JSON.parse(userStr);
+      if (user.role !== "admin") return "/";
+    } catch {
+      return "/login";
+    }
   }
 });
 

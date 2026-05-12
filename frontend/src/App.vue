@@ -21,7 +21,7 @@
 
       <div class="navbar-center">
         <router-link
-          v-for="link in navLinks"
+          v-for="link in visibleNavLinks"
           :key="link.path"
           :to="link.path"
           class="nav-item glass-item"
@@ -68,7 +68,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { User } from '@element-plus/icons-vue'
 import { navLinks } from './router/index.js'
@@ -78,6 +78,10 @@ const route = useRoute()
 const router = useRouter()
 
 const user = ref(null)
+const isAdmin = computed(() => user.value?.role === 'admin')
+const visibleNavLinks = computed(() =>
+  navLinks.filter(link => !link.adminOnly || isAdmin.value)
+)
 const currentTime = ref('')
 const backendOnline = ref(false)
 const bgCanvas = ref(null)

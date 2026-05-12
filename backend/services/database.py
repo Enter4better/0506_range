@@ -9,6 +9,7 @@ from pathlib import Path
 from threading import Lock
 from contextlib import contextmanager
 import sys
+from werkzeug.security import generate_password_hash
 
 # 添加backend目录到路径
 backend_dir = Path(__file__).parent.parent
@@ -167,11 +168,15 @@ class DatabaseService:
                 )
             """)
             
-            # 创建默认管理员用户
-            cursor.execute("""
-                INSERT OR IGNORE INTO users (username, password, email, role)
-                VALUES ('admin', 'pbkdf2:sha256:260000$admin$e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855', 'admin@example.com', 'admin')
-            """)
+            # 创建默认账号（密码均为 123456）
+            for uname, email, role in [
+                ('admin', 'admin@example.com', 'admin'),
+                ('user',  'user@example.com',  'user'),
+            ]:
+                cursor.execute("""
+                    INSERT OR IGNORE INTO users (username, password, email, role)
+                    VALUES (?, ?, ?, ?)
+                """, (uname, generate_password_hash('123456'), email, role))
             
             conn.commit()
             conn.close()

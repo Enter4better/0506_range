@@ -52,7 +52,7 @@
     <!-- 操作按钮 -->
     <el-card shadow="hover" class="tech-card" style="margin-bottom: 14px;">
       <div style="display: flex; gap: 12px; flex-wrap: wrap;">
-        <el-button type="primary" @click="showCreateModal = true">
+        <el-button v-if="isAdmin" type="primary" @click="showCreateModal = true">
           <el-icon>
             <Plus />
           </el-icon> 创建靶场
@@ -62,7 +62,7 @@
             <Refresh />
           </el-icon> 刷新列表
         </el-button>
-        <el-button type="danger" @click="cleanAllTargets" :disabled="targets.length === 0">
+        <el-button v-if="isAdmin" type="danger" @click="cleanAllTargets" :disabled="targets.length === 0">
           <el-icon>
             <Delete />
           </el-icon> 清理全部
@@ -153,7 +153,7 @@
               <el-button v-else size="small" type="success" @click="startTarget(row)">
                 启动
               </el-button>
-              <el-button size="small" type="danger" @click="deleteTarget(row)">
+              <el-button v-if="isAdmin" size="small" type="danger" @click="deleteTarget(row)">
                 删除
               </el-button>
               <el-button v-if="row.ports" size="small" type="primary" @click="accessTarget(row)">
@@ -235,7 +235,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, watch, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, computed, watch, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Setting, Plus, Refresh, Delete, Monitor, CircleCheck, Warning, DataLine, Box, Loading, Download } from '@element-plus/icons-vue'
 
@@ -245,6 +245,13 @@ import { COMPREHENSIVE_TARGETS, getTargetMeta, IMAGE_PORT_HINTS } from '@/utils/
 const targets = ref([])
 const loading = ref(true)
 const showCreateModal = ref(false)
+
+const isAdmin = computed(() => {
+  try {
+    const u = JSON.parse(localStorage.getItem('cyber_user') || '{}')
+    return u.role === 'admin'
+  } catch { return false }
+})
 const stats = reactive({ running: 0, stopped: 0, total: 0 })
 
 const createForm = reactive({
