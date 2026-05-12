@@ -6,12 +6,13 @@ echo ========================================
 echo.
 
 :: 设置Python路径
-set PYTHON_PATH=C:\Users\admin\AppData\Local\Programs\Python\Python311\python.exe
+:: 优先使用 PATH 中的 python，若不存在则用默认路径
+where python >nul 2>&1 && (set PYTHON_PATH=python) || (set PYTHON_PATH=C:\Users\admin\AppData\Local\Programs\Python\Python311\python.exe)
 
 echo [1/3] 检查Python环境...
 %PYTHON_PATH% --version >nul 2>&1
 if errorlevel 1 (
-    echo [错误] Python未找到，请检查安装路径
+    echo [错误] Python未找到，请确认已将 Python 加入 PATH 或修改脚本中的 PYTHON_PATH
     pause
     exit /b 1
 )
@@ -38,7 +39,7 @@ echo   服务启动完成!
 echo ========================================
 echo   前端地址: http://localhost:3000
 echo   后端地址: http://localhost:5000
-echo   默认账户: admin / admin123
+echo   默认账户: admin / 123456  （user / 123456）
 echo ========================================
 echo.
 echo 按任意键打开浏览器访问系统...
