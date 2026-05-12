@@ -168,15 +168,21 @@ class DatabaseService:
                 )
             """)
             
-            # 创建默认账号（密码均为 123456）
+            # 创建或重置默认账号（密码均为 123456）
             for uname, email, role in [
                 ('admin', 'admin@example.com', 'admin'),
                 ('user',  'user@example.com',  'user'),
             ]:
+                hashed = generate_password_hash('123456')
                 cursor.execute("""
                     INSERT OR IGNORE INTO users (username, password, email, role)
                     VALUES (?, ?, ?, ?)
-                """, (uname, generate_password_hash('123456'), email, role))
+                """, (uname, hashed, email, role))
+                # 若记录已存在，确保密码是正确的 werkzeug hash
+                cursor.execute("""
+                    UPDATE users SET password = ?, role = ?
+                    WHERE username = ?
+                """, (hashed, role, uname))
             
             conn.commit()
             conn.close()

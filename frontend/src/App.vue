@@ -55,7 +55,7 @@
       </div>
     </nav>
 
-    <main class="main-content">
+    <main class="main-content" :class="{ 'no-nav-padding': route.path === '/login' }">
       <router-view v-slot="{ Component }">
         <transition name="fade-slide" mode="out-in">
           <keep-alive :max="8">
@@ -183,6 +183,10 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+.no-nav-padding {
+  padding-top: 0 !important;
+}
+
 /* 全局动态背景 */
 .global-bg {
   position: fixed;

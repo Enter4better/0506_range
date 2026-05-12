@@ -153,7 +153,7 @@
 
     <!-- 底部版权 -->
     <div class="login-footer">
-      <span>© 2024 AI Security Range · 智能攻防靶场管理系统</span>
+      <span>© 2026 AI Security Range · 智能攻防靶场管理系统</span>
     </div>
   </div>
 </template>
