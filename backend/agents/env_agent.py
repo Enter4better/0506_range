@@ -355,6 +355,10 @@ class EnvAgent(BaseAgent):
             for k, v in defaults.get('env', {}).items():
                 if k not in comp.get('env', {}):
                     comp.setdefault('env', {})[k] = v
+            # 补全 ports（AI 可能返回空列表，从白名单补足）
+            ports = comp.get('ports')
+            if not ports or (isinstance(ports, list) and len(ports) == 0):
+                comp['ports'] = defaults.get('ports', [])
 
     # ==================== 环境创建（真实 Docker 部署）====================
 

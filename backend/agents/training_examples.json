@@ -9,7 +9,9 @@
           "type": "container",
           "name": "web-server",
           "image": "nginx:alpine",
-          "ports": [80],
+          "ports": [
+            80
+          ],
           "env": {},
           "command": null
         },
@@ -17,7 +19,9 @@
           "type": "container",
           "name": "db-server",
           "image": "mysql:8.0",
-          "ports": [3306],
+          "ports": [
+            3306
+          ],
           "env": {
             "MYSQL_ROOT_PASSWORD": "Range@123",
             "MYSQL_DATABASE": "testdb"
@@ -25,8 +29,15 @@
           "command": null
         }
       ],
-      "vulnerabilities": ["SQL注入", "XSS跨站脚本", "文件上传"],
-      "network": {"type": "bridge", "subnet": "172.20.0.0/16"}
+      "vulnerabilities": [
+        "SQL注入",
+        "XSS跨站脚本",
+        "文件上传"
+      ],
+      "network": {
+        "type": "bridge",
+        "subnet": "172.20.0.0/16"
+      }
     },
     "timestamp": "2026-05-09T10:00:00"
   },
@@ -40,7 +51,9 @@
           "type": "container",
           "name": "web-entry",
           "image": "nginx:alpine",
-          "ports": [80],
+          "ports": [
+            80
+          ],
           "env": {},
           "command": null
         },
@@ -48,7 +61,9 @@
           "type": "container",
           "name": "internal-host",
           "image": "ubuntu:22.04",
-          "ports": [22],
+          "ports": [
+            22
+          ],
           "env": {},
           "command": "sleep infinity"
         },
@@ -56,7 +71,9 @@
           "type": "container",
           "name": "internal-db",
           "image": "mysql:8.0",
-          "ports": [3306],
+          "ports": [
+            3306
+          ],
           "env": {
             "MYSQL_ROOT_PASSWORD": "Range@123",
             "MYSQL_DATABASE": "intranet"
@@ -64,8 +81,16 @@
           "command": null
         }
       ],
-      "vulnerabilities": ["横向移动", "暴力破解", "凭证窃取", "内网扫描"],
-      "network": {"type": "bridge", "subnet": "172.21.0.0/16"}
+      "vulnerabilities": [
+        "横向移动",
+        "暴力破解",
+        "凭证窃取",
+        "内网扫描"
+      ],
+      "network": {
+        "type": "bridge",
+        "subnet": "172.21.0.0/16"
+      }
     },
     "timestamp": "2026-05-09T10:05:00"
   },
@@ -79,22 +104,238 @@
           "type": "container",
           "name": "api-server",
           "image": "node:18-alpine",
-          "ports": [3000],
-          "env": {"NODE_ENV": "development"},
+          "ports": [
+            3000
+          ],
+          "env": {
+            "NODE_ENV": "development"
+          },
           "command": "sleep infinity"
         },
         {
           "type": "container",
           "name": "cache-server",
           "image": "redis:alpine",
-          "ports": [6379],
+          "ports": [
+            6379
+          ],
           "env": {},
           "command": null
         }
       ],
-      "vulnerabilities": ["越权访问", "JWT伪造", "IDOR", "业务逻辑漏洞"],
-      "network": {"type": "bridge", "subnet": "172.22.0.0/16"}
+      "vulnerabilities": [
+        "越权访问",
+        "JWT伪造",
+        "IDOR",
+        "业务逻辑漏洞"
+      ],
+      "network": {
+        "type": "bridge",
+        "subnet": "172.22.0.0/16"
+      }
     },
     "timestamp": "2026-05-09T10:10:00"
+  },
+  {
+    "input": "创建一个包含nginx和mysql的Web环境",
+    "output": {
+      "components": [
+        {
+          "command": null,
+          "env": {},
+          "image": "nginx:alpine",
+          "name": "web-server",
+          "ports": [
+            80
+          ],
+          "type": "container"
+        },
+        {
+          "command": null,
+          "env": {
+            "MYSQL_DATABASE": "testdb",
+            "MYSQL_ROOT_PASSWORD": "Range@123"
+          },
+          "image": "mysql:8.0",
+          "name": "db-server",
+          "ports": [
+            3306
+          ],
+          "type": "container"
+        }
+      ],
+      "description": "基于Nginx和MySQL构建的典型Web应用环境，适用于Web开发测试与安全演练",
+      "name": "Nginx+MySQL Web应用环境",
+      "network": {
+        "subnet": "172.20.0.0/16",
+        "type": "bridge"
+      },
+      "vulnerabilities": [
+        "SQL注入",
+        "XSS跨站脚本",
+        "文件上传"
+      ]
+    },
+    "timestamp": "2026-05-13T17:10:53.932089"
+  },
+  {
+    "input": "搭建一个存在SQL注入漏洞的靶场",
+    "output": {
+      "components": [
+        {
+          "command": null,
+          "env": {},
+          "image": "nginx:alpine",
+          "name": "web-server",
+          "ports": [
+            80
+          ],
+          "type": "container"
+        },
+        {
+          "command": null,
+          "env": {
+            "MYSQL_DATABASE": "testdb",
+            "MYSQL_ROOT_PASSWORD": "Range@123"
+          },
+          "image": "mysql:8.0",
+          "name": "db-server",
+          "ports": [
+            3306
+          ],
+          "type": "container"
+        }
+      ],
+      "description": "专为SQL注入漏洞学习与测试设计的Web环境，包含Nginx和MySQL，模拟典型Web应用场景",
+      "name": "SQL注入漏洞靶场",
+      "network": {
+        "subnet": "172.20.0.0/16",
+        "type": "bridge"
+      },
+      "vulnerabilities": [
+        "SQL注入"
+      ]
+    },
+    "timestamp": "2026-05-13T17:16:49.328545"
+  },
+  {
+    "input": "基于Ubuntu 22.04的渗透测试环境，包含Web服务、数据库及内网主机，支持端口扫描、暴力破解与横向移动等攻击模拟",
+    "output": {
+      "components": [
+        {
+          "command": null,
+          "env": {},
+          "image": "nginx:alpine",
+          "name": "web-target",
+          "ports": [
+            80
+          ],
+          "type": "container"
+        },
+        {
+          "command": "sleep infinity",
+          "env": {},
+          "image": "ubuntu:22.04",
+          "name": "target-host",
+          "ports": [
+            22
+          ],
+          "type": "container"
+        },
+        {
+          "command": null,
+          "env": {
+            "MYSQL_ROOT_PASSWORD": "Range@123",
+            "MYSQL_DATABASE": "testdb"
+          },
+          "image": "mysql:8.0",
+          "name": "db-target",
+          "ports": [
+            3306
+          ],
+          "type": "container"
+        }
+      ],
+      "description": "基于Ubuntu 22.04的渗透测试环境，包含Web服务、数据库及内网主机，支持端口扫描、暴力破解与横向移动等攻击模拟",
+      "name": "Ubuntu渗透测试靶场",
+      "network": {
+        "subnet": "172.21.0.0/16",
+        "type": "custom"
+      },
+      "vulnerabilities": [
+        "端口扫描",
+        "暴力破解",
+        "横向移动",
+        "弱口令",
+        "未授权访问"
+      ]
+    },
+    "timestamp": "2026-05-13T17:17:43.053717"
+  },
+  {
+    "input": "需要redis缓存和python后端的环境",
+    "output": {
+      "components": [
+        {
+          "command": null,
+          "env": {},
+          "image": "redis:alpine",
+          "name": "redis-cache",
+          "ports": [
+            6379
+          ],
+          "type": "container"
+        },
+        {
+          "command": "sleep infinity",
+          "env": {},
+          "image": "python:3.11-slim",
+          "name": "python-backend",
+          "ports": [],
+          "type": "container"
+        }
+      ],
+      "description": "基于Redis缓存与Python后端的Docker靶场环境，用于模拟和练习Redis未授权访问、缓存穿透以及Python代码注入等常见安全漏洞。",
+      "name": "Redis缓存与Python后端漏洞靶场",
+      "network": {
+        "subnet": "172.24.0.0/16",
+        "type": "bridge"
+      },
+      "vulnerabilities": [
+        "Redis未授权访问",
+        "缓存穿透",
+        "Python代码注入"
+      ]
+    },
+    "timestamp": "2026-05-13T17:22:23.610680"
+  },
+  {
+    "input": "一个简单的node.js应用服务器",
+    "output": {
+      "components": [
+        {
+          "command": "sleep infinity",
+          "env": {},
+          "image": "node:18-alpine",
+          "name": "node-app",
+          "ports": [
+            3000
+          ],
+          "type": "container"
+        }
+      ],
+      "description": "一个轻量级的 Node.js 应用服务器环境，基于 node:18-alpine 镜像，暴露 3000 端口，用于模拟和练习常见的 Node.js 安全漏洞。",
+      "name": "Node.js 应用服务器靶场",
+      "network": {
+        "subnet": "172.24.0.0/16",
+        "type": "bridge"
+      },
+      "vulnerabilities": [
+        "Node.js 应用漏洞",
+        "代码注入",
+        "不安全的依赖"
+      ]
+    },
+    "timestamp": "2026-05-13T17:22:41.243830"
   }
 ]

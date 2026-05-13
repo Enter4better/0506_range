@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>攻击阶段-技术类别覆盖强度矩阵</title>
+    <style>
+      body {
+        background: white;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 100vh;
+        font-family: "Times New Roman", "宋体", serif;
+        margin: 0;
+        padding: 20px;
+      }
+      .matrix-container {
+        max-width: 950px;
+        width: 100%;
+        background: white;
+        padding: 20px;
+        box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+      }
+      .matrix {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 14px;
+        text-align: center;
+      }
+      .matrix th,
+      .matrix td {
+        border: 1px solid #333;
+        padding: 12px 8px;
+      }
+      .matrix th {
+        background-color: #f5f5f5;
+        font-weight: bold;
+      }
+      /* 紫色热力图配色 */
+      .high {
+        background: linear-gradient(135deg, #6a1b9a, #8e24aa);
+        color: white;
+      }
+      .medium {
+        background: linear-gradient(135deg, #ce93d8, #e1bee7);
+        color: #2c3e50;
+      }
+      .low {
+        background: linear-gradient(135deg, #f3e5f5, #f8bbd0);
+        color: #2c3e50;
+      }
+      .caption {
+        text-align: center;
+        font-size: 12px;
+        margin-top: 16px;
+        color: #555;
+      }
+      .note {
+        text-align: left;
+        font-size: 11px;
+        margin-top: 12px;
+        color: #666;
+        border-top: 1px solid #ccc;
+        padding-top: 8px;
+      }
+      h3 {
+        text-align: center;
+        margin-bottom: 10px;
+        color: #4a148c;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="matrix-container">
+      <table class="matrix">
+        <thead>
+          <tr>
+            <th>技术类别</th>
+            <th>侦察</th>
+            <th>武器化与投递</th>
+            <th>漏洞利用</th>
+            <th>持久化与提权</th>
+            <th>横向移动</th>
+            <th>目标行动</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Web漏洞攻击</strong></td>
+            <td class="high">高</td>
+            <td class="high">高</td>
+            <td class="high">高</td>
+            <td class="low">低</td>
+            <td class="low">低</td>
+            <td class="low">低</td>
+          </tr>
+          <tr>
+            <td><strong>系统层攻击</strong></td>
+            <td class="low">低</td>
+            <td class="high">高</td>
+            <td class="high">高</td>
+            <td class="high">高</td>
+            <td class="medium">中</td>
+            <td class="low">低</td>
+          </tr>
+          <tr>
+            <td><strong>网络攻击</strong></td>
+            <td class="high">高</td>
+            <td class="medium">中</td>
+            <td class="low">低</td>
+            <td class="low">低</td>
+            <td class="low">低</td>
+            <td class="low">低</td>
+          </tr>
+          <tr>
+            <td><strong>APT攻击</strong></td>
+            <td class="medium">中</td>
+            <td class="high">高</td>
+            <td class="low">低</td>
+            <td class="high">高</td>
+            <td class="high">高</td>
+            <td class="high">高</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="note">
+        攻击阶段 × 技术类别 正交覆盖矩阵,深紫色(高覆盖) → 浅紫色(中等覆盖) →
+        浅粉色(低覆盖)。
+      </div>
+    </div>
+  </body>
+</html>
