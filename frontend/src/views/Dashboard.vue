@@ -29,12 +29,12 @@
         <StatCard :icon="Aim" :value="todayAttacks" label="今日攻击" type="danger" />
       </el-col>
       <el-col :xs="12" :sm="6">
-        <StatCard :icon="Warning" :value="blockedCount" label="拦截次数" type="warning" />
+        <StatCard :icon="Aim" :value="totalAttacks" label="总攻击" type="warning" />
       </el-col>
     </el-row>
 
-    <!-- 横向切换栏（与上方卡片风格一致） -->
-    <div class="tab-bar">
+    <!-- 横向切换栏（仅管理员可见） -->
+    <div v-if="isAdmin()" class="tab-bar">
       <div class="tab-item" :class="{ active: activeSection === 'ai' }" @click="activeSection = 'ai'">
         <el-icon>
           <MagicStick />
@@ -157,17 +157,24 @@
     </div>
 
     <!-- ========== 手动配置靶场板块 ========== -->
-    <div v-show="activeSection === 'manual'" class="section-content">
-      <div class="section-header">
-        <h3><el-icon>
-            <Setting />
-          </el-icon> 手动配置靶场</h3>
+    <!-- 普通用户强制显示，管理员需切换 -->
+    <div v-show="activeSection === 'manual' || !isAdmin()" class="section-content">
+      <!-- 普通用户显示简化标题 -->
+      <div v-if="!isAdmin()" class="section-header">
+        <h3><el-icon><Setting /></el-icon> 攻防功能</h3>
+        <p>日志审计 · 网络拓扑 · 攻击模拟 · 防御配置</p>
+      </div>
+      <!-- 管理员显示完整标题 -->
+      <div v-else class="section-header">
+        <h3><el-icon><Setting /></el-icon> 手动配置靶场</h3>
         <p>手动选择镜像、配置端口映射和环境变量，创建自定义靶场环境并进行攻防演练</p>
       </div>
 
-      <el-row :gutter="14">
+      <!-- 功能卡片区 -->
+      <!-- 管理员第一行：三个1/3宽度卡片 -->
+      <el-row v-if="isAdmin()" :gutter="14">
         <!-- 靶场管理 -->
-        <el-col :xs="24" :lg="8">
+        <el-col :xs="24" :sm="12" :lg="8">
           <el-card shadow="hover" class="tech-card" style="margin-bottom: 14px;">
             <template #header>
               <div class="card-title">
@@ -217,8 +224,194 @@
           </el-card>
         </el-col>
 
+        <!-- 日志卡片 -->
+        <el-col :xs="24" :sm="12" :lg="8">
+          <el-card shadow="hover" class="tech-card" style="margin-bottom: 14px;">
+            <template #header>
+              <div class="card-title">
+                <el-icon>
+                  <Document />
+                </el-icon> 系统日志
+                <el-tag type="info" size="small" style="margin-left: 8px;">审计</el-tag>
+              </div>
+            </template>
+            <div style="padding: 8px 0;">
+              <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 16px; line-height: 1.6;">
+                查看系统操作日志、安全事件和用户活动记录，支持筛选和导出功能。
+              </p>
+              <div class="feature-grid">
+                <div class="feature-item">
+                  <el-icon :size="24" style="color: var(--cyan);">
+                    <Timer />
+                  </el-icon>
+                  <span>时间筛选</span>
+                </div>
+                <div class="feature-item">
+                  <el-icon :size="24" style="color: var(--purple);">
+                    <Filter />
+                  </el-icon>
+                  <span>类型过滤</span>
+                </div>
+                <div class="feature-item">
+                  <el-icon :size="24" style="color: var(--success);">
+                    <Download />
+                  </el-icon>
+                  <span>导出日志</span>
+                </div>
+              </div>
+              <el-button type="primary" style="width: 100%; margin-top: 12px;" @click="goToLogs"
+                :disabled="!backendStatus">
+                <el-icon>
+                  <Document />
+                </el-icon> 查看日志
+              </el-button>
+            </div>
+          </el-card>
+        </el-col>
+
+        <!-- 拓扑卡片 -->
+        <el-col :xs="24" :sm="12" :lg="8">
+          <el-card shadow="hover" class="tech-card" style="margin-bottom: 14px;">
+            <template #header>
+              <div class="card-title">
+                <el-icon>
+                  <Connection />
+                </el-icon> 网络拓扑
+                <el-tag type="success" size="small" style="margin-left: 8px;">可视化</el-tag>
+              </div>
+            </template>
+            <div style="padding: 8px 0;">
+              <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 16px; line-height: 1.6;">
+                可视化查看靶场网络拓扑结构，监控容器之间的网络连接和通信关系。
+              </p>
+              <div class="feature-grid">
+                <div class="feature-item">
+                  <el-icon :size="24" style="color: var(--cyan);">
+                    <Cpu />
+                  </el-icon>
+                  <span>节点管理</span>
+                </div>
+                <div class="feature-item">
+                  <el-icon :size="24" style="color: var(--purple);">
+                    <Connection />
+                  </el-icon>
+                  <span>网络连接</span>
+                </div>
+                <div class="feature-item">
+                  <el-icon :size="24" style="color: var(--warning);">
+                    <Monitor />
+                  </el-icon>
+                  <span>实时监控</span>
+                </div>
+              </div>
+              <el-button type="success" style="width: 100%; margin-top: 12px;" @click="goToTopology"
+                :disabled="!backendStatus">
+                <el-icon>
+                  <Connection />
+                </el-icon> 查看拓扑
+              </el-button>
+            </div>
+          </el-card>
+        </el-col>
+      </el-row>
+
+      <!-- 普通用户第一行：两个1/2宽度卡片 -->
+      <el-row v-else :gutter="14">
+        <!-- 日志卡片 -->
+        <el-col :xs="24" :sm="12" :lg="12">
+          <el-card shadow="hover" class="tech-card" style="margin-bottom: 14px;">
+            <template #header>
+              <div class="card-title">
+                <el-icon>
+                  <Document />
+                </el-icon> 系统日志
+                <el-tag type="info" size="small" style="margin-left: 8px;">审计</el-tag>
+              </div>
+            </template>
+            <div style="padding: 8px 0;">
+              <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 16px; line-height: 1.6;">
+                查看系统操作日志、安全事件和用户活动记录，支持筛选和导出功能。
+              </p>
+              <div class="feature-grid">
+                <div class="feature-item">
+                  <el-icon :size="24" style="color: var(--cyan);">
+                    <Timer />
+                  </el-icon>
+                  <span>时间筛选</span>
+                </div>
+                <div class="feature-item">
+                  <el-icon :size="24" style="color: var(--purple);">
+                    <Filter />
+                  </el-icon>
+                  <span>类型过滤</span>
+                </div>
+                <div class="feature-item">
+                  <el-icon :size="24" style="color: var(--success);">
+                    <Download />
+                  </el-icon>
+                  <span>导出日志</span>
+                </div>
+              </div>
+              <el-button type="primary" style="width: 100%; margin-top: 12px;" @click="goToLogs"
+                :disabled="!backendStatus">
+                <el-icon>
+                  <Document />
+                </el-icon> 查看日志
+              </el-button>
+            </div>
+          </el-card>
+        </el-col>
+
+        <!-- 拓扑卡片 -->
+        <el-col :xs="24" :sm="12" :lg="12">
+          <el-card shadow="hover" class="tech-card" style="margin-bottom: 14px;">
+            <template #header>
+              <div class="card-title">
+                <el-icon>
+                  <Connection />
+                </el-icon> 网络拓扑
+                <el-tag type="success" size="small" style="margin-left: 8px;">可视化</el-tag>
+              </div>
+            </template>
+            <div style="padding: 8px 0;">
+              <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 16px; line-height: 1.6;">
+                可视化查看靶场网络拓扑结构，监控容器之间的网络连接和通信关系。
+              </p>
+              <div class="feature-grid">
+                <div class="feature-item">
+                  <el-icon :size="24" style="color: var(--cyan);">
+                    <Cpu />
+                  </el-icon>
+                  <span>节点管理</span>
+                </div>
+                <div class="feature-item">
+                  <el-icon :size="24" style="color: var(--purple);">
+                    <Connection />
+                  </el-icon>
+                  <span>网络连接</span>
+                </div>
+                <div class="feature-item">
+                  <el-icon :size="24" style="color: var(--warning);">
+                    <Monitor />
+                  </el-icon>
+                  <span>实时监控</span>
+                </div>
+              </div>
+              <el-button type="success" style="width: 100%; margin-top: 12px;" @click="goToTopology"
+                :disabled="!backendStatus">
+                <el-icon>
+                  <Connection />
+                </el-icon> 查看拓扑
+              </el-button>
+            </div>
+          </el-card>
+        </el-col>
+      </el-row>
+
+      <!-- 第二行：攻击模拟 + 防御配置 -->
+      <el-row :gutter="14">
         <!-- 攻击模拟 -->
-        <el-col :xs="24" :lg="8">
+        <el-col :xs="24" :sm="12" :lg="12">
           <el-card shadow="hover" class="tech-card" style="margin-bottom: 14px;">
             <template #header>
               <div class="card-title">
@@ -318,7 +511,7 @@
         </el-col>
 
         <!-- 防御配置 -->
-        <el-col :xs="24" :lg="8">
+        <el-col :xs="24" :sm="12" :lg="12">
           <el-card shadow="hover" class="tech-card" style="margin-bottom: 14px;">
             <template #header>
               <div class="card-title">
@@ -391,19 +584,26 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import {
   DataLine, Aim, Cpu, Connection, Monitor, Warning,
   Timer, Refresh, Setting, Loading, Umbrella, MagicStick,
-  Plus, VideoPlay, VideoPause
+  Plus, VideoPlay, VideoPause, Document, Filter, Download
 } from '@element-plus/icons-vue'
 import StatCard from '@/components/StatCard.vue'
 import request from '@/utils/request'
 
 const router = useRouter()
-const activeSection = ref('ai')
+// 使用函数获取最新值，确保响应式
+const isAdmin = () => {
+  try {
+    const u = JSON.parse(localStorage.getItem('cyber_user') || '{}')
+    return u.role === 'admin'
+  } catch { return false }
+}
+const activeSection = ref(isAdmin() ? 'ai' : 'manual')
 const backendStatus = ref(false)
 const lastUpdate = ref('--')
 const attackLoading = ref(false)
@@ -419,6 +619,7 @@ const recentAttacks = ref([])
 const activeTargets = ref(0)
 const activeRules = ref(0)
 const todayAttacks = ref(0)
+const totalAttacks = ref(0)
 const blockedCount = ref(0)
 const aiRangeDesc = ref('')
 const aiResult = ref(null)
@@ -464,14 +665,16 @@ async function loadStats() {
 
     activeTargets.value = statsData.environments || 0
     activeRules.value = statsData.defenses || 0
-    todayAttacks.value = statsData.attacks || 0
-    blockedCount.value = statsData.alerts || 0
+    todayAttacks.value = statsData.today_attacks || 0
+    totalAttacks.value = statsData.attacks || 0
+    blockedCount.value = statsData.today_alerts || statsData.alerts || 0
     lastUpdate.value = new Date().toLocaleTimeString('zh-CN')
   } catch {
     backendStatus.value = false
     activeTargets.value = 0
     activeRules.value = 0
     todayAttacks.value = 0
+    totalAttacks.value = 0
     blockedCount.value = 0
   }
 }
@@ -642,6 +845,14 @@ async function startDefense() {
 
 function goToEnv() {
   router.push('/env')
+}
+
+function goToLogs() {
+  router.push('/logs')
+}
+
+function goToTopology() {
+  router.push('/topology')
 }
 
 function goToAttack() {

@@ -7,6 +7,7 @@ import {
   Document,
   Setting,
   MagicStick,
+  User,
 } from "@element-plus/icons-vue";
 
 const routes = [
@@ -43,6 +44,12 @@ const routes = [
     meta: { requiresAdmin: true },
   },
   {
+    path: "/users",
+    name: "UserManage",
+    component: () => import("../views/UserManage.vue"),
+    meta: { requiresAdmin: true },
+  },
+  {
     path: "/login",
     name: "Login",
     component: () => import("../views/Login.vue"),
@@ -54,6 +61,7 @@ const routes = [
 export const navLinks = [
   { name: "控制台", path: "/", icon: House },
   { name: "AI靶场", path: "/ai-range", icon: MagicStick, adminOnly: true },
+  { name: "用户管理", path: "/users", icon: User, adminOnly: true },
   { name: "靶场", path: "/env", icon: Setting },
   { name: "攻击", path: "/attack", icon: Aim },
   { name: "防御", path: "/defense", icon: Umbrella },

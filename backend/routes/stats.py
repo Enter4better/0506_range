@@ -195,6 +195,8 @@ def get_stats_overview():
         stats = {
             'environments': 0,
             'attacks': 0,
+            'today_attacks': 0,
+            'today_alerts': 0,
             'defenses': 0,
             'logs': 0,
             'health': 0,
@@ -213,7 +215,30 @@ def get_stats_overview():
             stats['attacks'] = len(attacks) if attacks else 0
         except Exception as e:
             current_app.logger.error(f"Error listing attacks: {e}")
-        
+
+        # 今日攻击统计
+        try:
+            today = datetime.now().strftime('%Y-%m-%d')
+            conn = db_service.get_connection()
+            if conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT COUNT(*) FROM attacks WHERE DATE(created_at) = ?",
+                    (today,)
+                )
+                result = cursor.fetchone()
+                stats['today_attacks'] = result[0] if result else 0
+
+                cursor.execute(
+                    "SELECT COUNT(*) FROM attacks WHERE DATE(created_at) = ? AND status = 'blocked'",
+                    (today,)
+                )
+                result = cursor.fetchone()
+                stats['today_alerts'] = result[0] if result else 0
+                conn.close()
+        except Exception as e:
+            current_app.logger.error(f"Error getting today attack stats: {e}")
+
         try:
             defenses = Defense.list_all()
             stats['defenses'] = len(defenses) if defenses else 0

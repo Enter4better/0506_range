@@ -253,7 +253,7 @@ async function handleLogin() {
 
       const user = res.data?.user || {
         username: loginForm.value.username,
-        role: loginForm.value.username === 'admin' ? '管理员' : '用户'
+        role: loginForm.value.username === 'admin' ? 'admin' : 'user'
       }
       localStorage.setItem('cyber_user', JSON.stringify(user))
       if (rememberMe.value) localStorage.setItem('cyber_remember', 'true')

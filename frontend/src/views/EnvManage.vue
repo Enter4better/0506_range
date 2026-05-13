@@ -99,7 +99,8 @@
           <Box />
         </el-icon>
         <p style="margin-top: 12px;">暂无靶场环境</p>
-        <p style="font-size: 12px; margin-top: 4px;">点击"创建靶场"按钮开始创建</p>
+        <p v-if="isAdmin" style="font-size: 12px; margin-top: 4px;">点击"创建靶场"按钮开始创建</p>
+        <p v-else style="font-size: 12px; margin-top: 4px;">暂无靶场环境，请联系管理员创建</p>
       </div>
 
       <el-table v-else :data="targets" stripe style="width: 100%;" size="small">
@@ -147,10 +148,10 @@
         <el-table-column label="操作" width="280" fixed="right">
           <template #default="{ row }">
             <el-button-group>
-              <el-button v-if="row.status === 'running'" size="small" type="warning" @click="stopTarget(row)">
+              <el-button v-if="isAdmin && row.status === 'running'" size="small" type="warning" @click="stopTarget(row)">
                 停止
               </el-button>
-              <el-button v-else size="small" type="success" @click="startTarget(row)">
+              <el-button v-else-if="isAdmin" size="small" type="success" @click="startTarget(row)">
                 启动
               </el-button>
               <el-button v-if="isAdmin" size="small" type="danger" @click="deleteTarget(row)">

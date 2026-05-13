@@ -47,7 +47,7 @@
           </template>
           <div style="padding: 6px 0;">
             <div style="font-weight: 600; color: var(--purple);">{{ user.username }}</div>
-            <div style="font-size: 11px; color: var(--text-muted);">{{ user.role || '用户' }}</div>
+            <div style="font-size: 11px; color: var(--text-muted);">{{ user.role === 'admin' ? '管理员' : '普通用户' }}</div>
             <el-divider style="margin: 10px 0;" />
             <el-button size="small" type="danger" plain style="width: 100%;" @click="logout">退出登录</el-button>
           </div>
@@ -58,7 +58,7 @@
     <main class="main-content" :class="{ 'no-nav-padding': route.path === '/login' }">
       <router-view v-slot="{ Component }">
         <transition name="fade-slide" mode="out-in">
-          <keep-alive :max="8">
+          <keep-alive :max="8" :exclude="['Dashboard']">
             <component :is="Component" />
           </keep-alive>
         </transition>
@@ -68,7 +68,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { User } from '@element-plus/icons-vue'
 import { navLinks } from './router/index.js'
@@ -111,8 +111,17 @@ function checkLogin() {
   }
 }
 
+// 路由变化时重新检查登录状态（确保切换账号后能刷新）
+watch(() => route.path, (newPath) => {
+  if (newPath === '/') {
+    checkLogin()
+  }
+})
+
 function logout() {
   localStorage.removeItem('cyber_user')
+  localStorage.removeItem('token')
+  localStorage.removeItem('cyber_remember')
   user.value = null
   router.push('/login')
 }

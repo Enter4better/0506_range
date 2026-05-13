@@ -31,6 +31,16 @@ request.interceptors.response.use(
     return response.data;
   },
   (err) => {
+    // 处理 401 认证失败 - token过期或无效
+    if (err.response?.status === 401) {
+      console.warn("认证失败，正在清除登录状态...");
+      localStorage.removeItem('cyber_user');
+      localStorage.removeItem('token');
+      localStorage.removeItem('cyber_remember');
+      ElMessage.warning("登录已过期，请重新登录");
+      router.push('/login');
+      return Promise.reject(err);
+    }
     console.error("API Error:", err.message);
     return Promise.reject(err);
   },
