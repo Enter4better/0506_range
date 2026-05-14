@@ -51,7 +51,7 @@
 
     <!-- 操作按钮 -->
     <el-card shadow="hover" class="tech-card" style="margin-bottom: 14px;">
-      <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+      <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: center;">
         <el-button v-if="isAdmin" type="primary" @click="showCreateModal = true">
           <el-icon>
             <Plus />
@@ -72,6 +72,25 @@
             <Download />
           </el-icon> 导出列表
         </el-button>
+      </div>
+
+      <!-- 批量操作提示条 -->
+      <div v-if="selectedTargets.length > 0" class="batch-bar">
+        <span style="font-size: 14px;">
+          <el-icon style="color: var(--cyan);"><Check /></el-icon>
+          已选择 <strong style="color: var(--cyan);">{{ selectedTargets.length }}</strong> 个靶场
+        </span>
+        <div style="display: flex; gap: 10px;">
+          <el-button type="danger" @click="batchDeleteTargets">
+            <el-icon><Delete /></el-icon> 批量删除选中
+          </el-button>
+          <el-button type="warning" @click="batchExportTargets">
+            <el-icon><Download /></el-icon> 批量导出
+          </el-button>
+          <el-button @click="clearSelection">
+            <el-icon><Close /></el-icon> 取消选择
+          </el-button>
+        </div>
       </div>
 
     </el-card>
@@ -103,7 +122,8 @@
         <p v-else style="font-size: 12px; margin-top: 4px;">暂无靶场环境，请联系管理员创建</p>
       </div>
 
-      <el-table v-else :data="targets" stripe style="width: 100%;" size="small">
+      <el-table v-else :data="targets" stripe style="width: 100%;" size="small" ref="tableRef" @selection-change="handleSelectionChange">
+        <el-table-column type="selection" width="40" />
         <el-table-column prop="name" label="名称" min-width="150">
           <template #default="{ row }">
             <span style="color: var(--cyan); font-weight: 500;">{{ row.name }}</span>
@@ -238,7 +258,7 @@
 <script setup>
 import { ref, reactive, computed, watch, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Setting, Plus, Refresh, Delete, Monitor, CircleCheck, Warning, DataLine, Box, Loading, Download } from '@element-plus/icons-vue'
+import { Setting, Plus, Refresh, Delete, Monitor, CircleCheck, Warning, DataLine, Box, Loading, Download, Close, Check } from '@element-plus/icons-vue'
 
 import request from '../utils/request'
 import { COMPREHENSIVE_TARGETS, getTargetMeta, IMAGE_PORT_HINTS } from '@/utils/targetMeta'
@@ -246,6 +266,19 @@ import { COMPREHENSIVE_TARGETS, getTargetMeta, IMAGE_PORT_HINTS } from '@/utils/
 const targets = ref([])
 const loading = ref(true)
 const showCreateModal = ref(false)
+const selectedTargets = ref([])
+const tableRef = ref(null)
+
+// 表格选择事件
+function handleSelectionChange(rows) {
+  selectedTargets.value = rows
+}
+
+// 清空选择
+function clearSelection() {
+  selectedTargets.value = []
+  tableRef.value?.clearSelection()
+}
 
 const isAdmin = computed(() => {
   try {
@@ -282,6 +315,9 @@ async function fetchTargets() {
         ports: t.ports || t.port || '-',
         created: t.created || t.created_at || '-'
       }))
+      // 清空已选择（刷新后重新选择）
+      selectedTargets.value = []
+      tableRef.value?.clearSelection()
       updateStats()
     }
   } catch (err) {
@@ -383,7 +419,7 @@ async function deleteTarget(target) {
     if (res.status === 'success') {
       ElMessage.success(`靶场已删除: ${target.name}`)
       // 立即从本地列表中移除（使用多种匹配方式确保找到）
-      const index = targets.value.findIndex(t => 
+      const index = targets.value.findIndex(t =>
         (t.id || t.target_id) === (target.id || target.target_id) ||
         t.name === target.name ||
         t.container_name === target.container_name
@@ -403,6 +439,82 @@ async function deleteTarget(target) {
     if (err !== 'cancel') {
       ElMessage.error('删除失败: ' + (err.message || '未知错误'))
     }
+  }
+}
+
+// 批量删除靶场
+async function batchDeleteTargets() {
+  if (selectedTargets.value.length === 0) return
+
+  try {
+    await ElMessageBox.confirm(
+      `确定要删除选中的 ${selectedTargets.value.length} 个靶场吗？此操作不可恢复！`,
+      '确认批量删除',
+      { type: 'warning' }
+    )
+
+    let successCount = 0
+    let failCount = 0
+
+    for (const target of selectedTargets.value) {
+      try {
+        const id = target.target_id || target.id || target.name
+        const res = await request.post(`/env/delete/${id}`)
+        if (res.status === 'success') {
+          successCount++
+          // 从列表中移除
+          const index = targets.value.findIndex(t =>
+            (t.id || t.target_id) === (target.id || target.target_id) ||
+            t.name === target.name ||
+            t.container_name === target.container_name
+          )
+          if (index !== -1) {
+            targets.value.splice(index, 1)
+          }
+        } else {
+          failCount++
+        }
+      } catch {
+        failCount++
+      }
+    }
+
+    selectedTargets.value = []
+    updateStats()
+    setTimeout(() => { fetchTargets() }, 1000)
+
+    if (failCount === 0) {
+      ElMessage.success(`已成功删除 ${successCount} 个靶场`)
+    } else {
+      ElMessage.warning(`成功删除 ${successCount} 个，失败 ${failCount} 个`)
+    }
+  } catch (err) {
+    if (err !== 'cancel') {
+      ElMessage.error('批量删除失败')
+    }
+  }
+}
+
+// 批量导出靶场
+function batchExportTargets() {
+  if (selectedTargets.value.length === 0) return
+
+  try {
+    const dataStr = JSON.stringify(selectedTargets.value, null, 2)
+    const blob = new Blob([dataStr], { type: 'application/json;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    const now = new Date()
+    const ts = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`
+    a.download = `targets_batch_${ts}.json`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+    ElMessage.success(`已导出 ${selectedTargets.value.length} 个靶场配置`)
+  } catch (e) {
+    ElMessage.error('导出失败: ' + (e.message || '未知错误'))
   }
 }
 
@@ -534,5 +646,17 @@ onUnmounted(() => {
   border-radius: 8px;
   padding: 12px 14px;
   width: 100%;
+}
+
+/* 批量操作提示条 */
+.batch-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 14px;
+  padding: 12px 16px;
+  background: rgba(64, 158, 255, 0.08);
+  border: 1px solid rgba(64, 158, 255, 0.3);
+  border-radius: 8px;
 }
 </style>

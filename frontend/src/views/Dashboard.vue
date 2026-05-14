@@ -17,18 +17,15 @@
       <code>cd backend && python app.py</code>
     </div>
 
-    <!-- 实时状态统计卡片（与攻击/防御页面风格一致） -->
+    <!-- 实时状态统计卡片 -->
     <el-row :gutter="16" class="stats-row">
-      <el-col :xs="12" :sm="6">
+      <el-col :xs="12" :sm="8">
         <StatCard :icon="Monitor" :value="activeTargets" label="活跃靶场" type="cyan" />
       </el-col>
-      <el-col :xs="12" :sm="6">
+      <el-col :xs="12" :sm="8">
         <StatCard :icon="Umbrella" :value="activeRules" label="防御规则" type="success" />
       </el-col>
-      <el-col :xs="12" :sm="6">
-        <StatCard :icon="Aim" :value="todayAttacks" label="今日攻击" type="danger" />
-      </el-col>
-      <el-col :xs="12" :sm="6">
+      <el-col :xs="24" :sm="8">
         <StatCard :icon="Aim" :value="totalAttacks" label="总攻击" type="warning" />
       </el-col>
     </el-row>
@@ -179,13 +176,13 @@
               <div class="card-title">
                 <el-icon>
                   <Monitor />
-                </el-icon> 靶场管理
-                <el-tag type="warning" size="small" style="margin-left: 8px;">自定义</el-tag>
+                </el-icon> 靶场{{ isAdmin() ? '管理' : '查看' }}
+                <el-tag type="warning" size="small" style="margin-left: 8px;">{{ isAdmin() ? '自定义' : '只读' }}</el-tag>
               </div>
             </template>
             <div class="card-body">
-              <p class="card-desc">创建、启动、停止和管理您的靶场环境。支持自定义镜像、端口映射和环境变量配置。</p>
-              <div class="feature-grid">
+              <p class="card-desc">{{ isAdmin() ? '创建、启动、停止和管理您的靶场环境。支持自定义镜像、端口映射和环境变量配置。' : '查看所有靶场环境及其运行状态，了解当前部署的安全攻防靶场。' }}</p>
+              <div v-if="isAdmin()" class="feature-grid">
                 <div class="feature-item">
                   <el-icon :size="24" style="color: var(--cyan);">
                     <Plus />
@@ -212,14 +209,85 @@
                 </div>
               </div>
               <el-button type="warning" class="card-btn" @click="goToEnv" :disabled="!backendStatus">
-                <el-icon><Setting /></el-icon> 管理靶场
+                <el-icon><Setting /></el-icon> {{ isAdmin() ? '管理靶场' : '查看靶场' }}
               </el-button>
             </div>
           </el-card>
         </el-col>
 
+        <!-- 日志审计 -->
+        <el-col :xs="24" :sm="8" :lg="8">
+          <el-card shadow="hover" class="tech-card" style="margin-bottom: 14px;">
+            <template #header>
+              <div class="card-title">
+                <el-icon>
+                  <Document />
+                </el-icon> 日志审计
+                <el-tag type="info" size="small" style="margin-left: 8px;">审计</el-tag>
+              </div>
+            </template>
+            <div class="card-body">
+              <p class="card-desc">实时监控攻防日志，记录攻击行为和防御事件，支持日志查询与导出。</p>
+              <div class="feature-grid">
+                <div class="feature-item">
+                  <el-icon :size="24" style="color: var(--info);">
+                    <Filter />
+                  </el-icon>
+                  <span>日志筛选</span>
+                </div>
+                <div class="feature-item">
+                  <el-icon :size="24" style="color: var(--success);">
+                    <Download />
+                  </el-icon>
+                  <span>导出报表</span>
+                </div>
+              </div>
+              <el-button type="info" class="card-btn" @click="goToLogs" :disabled="!backendStatus">
+                <el-icon><Document /></el-icon> 查看日志
+              </el-button>
+            </div>
+          </el-card>
+        </el-col>
+
+        <!-- 网络拓扑 -->
+        <el-col :xs="24" :sm="8" :lg="8">
+          <el-card shadow="hover" class="tech-card" style="margin-bottom: 14px;">
+            <template #header>
+              <div class="card-title">
+                <el-icon>
+                  <Connection />
+                </el-icon> 网络拓扑
+                <el-tag type="primary" size="small" style="margin-left: 8px;">可视化</el-tag>
+              </div>
+            </template>
+            <div class="card-body">
+              <p class="card-desc">可视化展示靶场网络架构，动态呈现攻击路径与防御节点状态。</p>
+              <div class="feature-grid">
+                <div class="feature-item">
+                  <el-icon :size="24" style="color: var(--cyan);">
+                    <Monitor />
+                  </el-icon>
+                  <span>节点监控</span>
+                </div>
+                <div class="feature-item">
+                  <el-icon :size="24" style="color: var(--danger);">
+                    <Aim />
+                  </el-icon>
+                  <span>攻击轨迹</span>
+                </div>
+              </div>
+              <el-button type="primary" class="card-btn" @click="goToTopology" :disabled="!backendStatus">
+                <el-icon><Connection /></el-icon> 查看拓扑
+              </el-button>
+            </div>
+          </el-card>
+        </el-col>
+      </el-row>
+
+      <!-- 攻击防御卡片区 -->
+      <el-row :gutter="14" class="card-row">
         <!-- 攻击模拟 -->
-        <el-col :xs="24" :lg="8">
+        <el-col :xs="24" :sm="12" :lg="12">
           <el-card shadow="hover" class="tech-card" style="margin-bottom: 14px;">
             <template #header>
               <div class="card-title">
@@ -315,7 +383,7 @@
         </el-col>
 
         <!-- 防御配置 -->
-        <el-col :xs="24" :lg="8">
+        <el-col :xs="24" :sm="12" :lg="12">
           <el-card shadow="hover" class="tech-card" style="margin-bottom: 14px;">
             <template #header>
               <div class="card-title">
@@ -326,7 +394,7 @@
               </div>
             </template>
             <div class="card-body">
-              <p class="card-desc">针对指定攻击类型启用防御规则，规则在攻防演练中自动生效并提升拦截率。</p>
+              <p class="card-desc">针对指定攻击类型启用防御规则，启用后规则将在防御页面可见，规则在攻防演练中自动生效并提升拦截率。</p>
               <el-form label-width="72px" size="small">
                 <el-form-item label="防御目标">
                   <el-select v-model="defenseType" style="width: 100%;" filterable>
@@ -372,179 +440,6 @@
                   </el-tag>
                 </el-space>
               </div>
-              <div v-else style="margin-top: 14px; font-size: 12px; color: var(--text-muted);">
-                启用后规则将在防御页面可见
-              </div>
-            </div>
-          </el-card>
-        </el-col>
-      </el-row>
-      <el-row :gutter="14">
-        <!-- 攻击模拟 -->
-        <el-col :xs="24" :sm="12" :lg="12">
-          <el-card shadow="hover" class="tech-card" style="margin-bottom: 14px;">
-            <template #header>
-              <div class="card-title">
-                <el-icon>
-                  <Aim />
-                </el-icon> 攻击模拟
-                <el-tag type="danger" size="small" style="margin-left: 8px;">LIVE</el-tag>
-              </div>
-            </template>
-            <div class="card-body">
-              <p class="card-desc">
-                选择攻击类型和目标，对靶场环境发起模拟攻击，测试安全防护能力。
-              </p>
-              <el-form label-width="72px" size="small">
-                <el-form-item label="攻击类型">
-                  <el-select v-model="attackType" style="width: 100%;" filterable>
-                    <el-option-group label="Web漏洞攻击">
-                      <el-option label="SQL注入" value="SQL注入" />
-                      <el-option label="XSS跨站脚本" value="XSS攻击" />
-                      <el-option label="CSRF跨站请求伪造" value="CSRF攻击" />
-                      <el-option label="文件包含漏洞" value="文件包含" />
-                      <el-option label="命令执行" value="命令执行" />
-                      <el-option label="SSRF服务端请求伪造" value="SSRF攻击" />
-                      <el-option label="XXE外部实体注入" value="XXE注入" />
-                    </el-option-group>
-                    <el-option-group label="系统层攻击">
-                      <el-option label="权限提升" value="权限提升" />
-                      <el-option label="容器逃逸" value="容器逃逸" />
-                    </el-option-group>
-                    <el-option-group label="网络攻击">
-                      <el-option label="端口扫描" value="端口扫描" />
-                      <el-option label="暴力破解" value="暴力破解" />
-                    </el-option-group>
-                  </el-select>
-                </el-form-item>
-                <el-form-item label="目标端口">
-                  <el-input v-model="targetPort" placeholder="8080">
-                    <template #prepend>PORT</template>
-                  </el-input>
-                </el-form-item>
-                <el-form-item label="攻击强度">
-                  <el-slider v-model="attackIntensity" :min="1" :max="10" :marks="intensityMarks" />
-                </el-form-item>
-              </el-form>
-              <el-button type="danger" class="card-btn" @click="startAttack" :loading="attackLoading"
-                :disabled="!backendStatus">
-                <el-icon>
-                  <Aim />
-                </el-icon> 发起攻击
-              </el-button>
-
-              <!-- 攻防进度 -->
-              <div v-if="showProgress" style="margin-top: 14px;">
-                <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">
-                  攻防进度
-                  <el-tag :type="progressStatus.type" size="small" style="margin-left: 6px;">{{ progressStatus.text
-                  }}</el-tag>
-                </div>
-                <div style="margin-bottom: 8px;">
-                  <div
-                    style="display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted); margin-bottom: 2px;">
-                    <span>攻击: {{ attackPhaseName }}</span>
-                    <span>{{ attackPhasePercent }}%</span>
-                  </div>
-                  <el-progress :percentage="attackPhasePercent" :color="attackPhaseColor" :stroke-width="10"
-                    :format="() => ''" />
-                </div>
-                <div>
-                  <div
-                    style="display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted); margin-bottom: 2px;">
-                    <span>防御: {{ defenseLevelName }}</span>
-                    <span>{{ defenseLevelPercent }}%</span>
-                  </div>
-                  <el-progress :percentage="defenseLevelPercent" :color="defenseLevelColor" :stroke-width="10"
-                    :format="() => ''" />
-                </div>
-                <div v-if="progressMessage" style="margin-top: 8px;">
-                  <el-alert :title="progressMessage" :type="progressAlertType" :closable="false" show-icon
-                    size="small" />
-                </div>
-              </div>
-
-              <!-- 最近攻击记录 -->
-              <div v-if="recentAttacks.length > 0" style="margin-top: 14px;">
-                <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 8px;">最近攻击</div>
-                <el-timeline>
-                  <el-timeline-item v-for="attack in recentAttacks.slice(0, 3)" :key="attack.id"
-                    :type="attack.success ? 'success' : 'danger'" size="small">
-                    <span style="font-size: 12px;">{{ attack.type }}</span>
-                    <span style="font-size: 11px; color: var(--text-muted); margin-left: 8px;">{{ attack.time
-                    }}</span>
-                  </el-timeline-item>
-                </el-timeline>
-              </div>
-            </div>
-          </el-card>
-        </el-col>
-
-        <!-- 防御配置 -->
-        <el-col :xs="24" :sm="12" :lg="12">
-          <el-card shadow="hover" class="tech-card" style="margin-bottom: 14px;">
-            <template #header>
-              <div class="card-title">
-                <el-icon>
-                  <Umbrella />
-                </el-icon> 防御配置
-                <el-tag type="success" size="small" style="margin-left: 8px;">ACTIVE</el-tag>
-              </div>
-            </template>
-            <div class="card-body">
-              <p class="card-desc">
-                针对指定攻击类型启用防御规则，规则在攻防演练中自动生效并提升拦截率。
-              </p>
-              <el-form label-width="72px" size="small">
-                <el-form-item label="防御目标">
-                  <el-select v-model="defenseType" style="width: 100%;" filterable>
-                    <el-option-group label="Web漏洞防御">
-                      <el-option label="SQL注入" value="SQL注入" />
-                      <el-option label="XSS攻击" value="XSS攻击" />
-                      <el-option label="CSRF攻击" value="CSRF攻击" />
-                      <el-option label="文件包含" value="文件包含" />
-                      <el-option label="命令执行" value="命令执行" />
-                      <el-option label="SSRF攻击" value="SSRF攻击" />
-                      <el-option label="XXE注入" value="XXE注入" />
-                    </el-option-group>
-                    <el-option-group label="系统层防御">
-                      <el-option label="权限提升" value="权限提升" />
-                      <el-option label="容器逃逸" value="容器逃逸" />
-                      <el-option label="反弹Shell" value="反弹Shell" />
-                    </el-option-group>
-                    <el-option-group label="网络攻击防御">
-                      <el-option label="端口扫描" value="端口扫描" />
-                      <el-option label="暴力破解" value="暴力破解" />
-                      <el-option label="中间人攻击" value="中间人攻击" />
-                    </el-option-group>
-                    <el-option-group label="APT防御">
-                      <el-option label="后门植入" value="后门植入" />
-                      <el-option label="横向移动" value="横向移动" />
-                      <el-option label="数据外传" value="数据外传" />
-                    </el-option-group>
-                  </el-select>
-                </el-form-item>
-                <el-form-item label="防御强度">
-                  <el-slider v-model="defenseIntensity" :min="1" :max="10" :marks="intensityMarks" />
-                </el-form-item>
-              </el-form>
-              <el-button type="success" class="card-btn" @click="startDefense" :loading="defenseLoading"
-                :disabled="!backendStatus">
-                <el-icon>
-                  <Umbrella />
-                </el-icon> 启用防御
-              </el-button>
-              <div v-if="recentDefenses.length" style="margin-top: 14px;">
-                <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 8px;">已启用规则</div>
-                <el-space wrap>
-                  <el-tag v-for="d in recentDefenses" :key="d.type" type="success" size="small" effect="dark">
-                    {{ d.type }} ✓
-                  </el-tag>
-                </el-space>
-              </div>
-              <div v-else style="margin-top: 14px; font-size: 12px; color: var(--text-muted);">
-                启用后规则将在防御页面可见
-              </div>
             </div>
           </el-card>
         </el-col>
@@ -588,9 +483,7 @@ const recentDefenses = ref([])
 const recentAttacks = ref([])
 const activeTargets = ref(0)
 const activeRules = ref(0)
-const todayAttacks = ref(0)
 const totalAttacks = ref(0)
-const blockedCount = ref(0)
 const aiRangeDesc = ref('')
 const aiResult = ref(null)
 
@@ -635,17 +528,13 @@ async function loadStats() {
 
     activeTargets.value = statsData.environments || 0
     activeRules.value = statsData.defenses || 0
-    todayAttacks.value = statsData.today_attacks || 0
     totalAttacks.value = statsData.attacks || 0
-    blockedCount.value = statsData.today_alerts || statsData.alerts || 0
     lastUpdate.value = new Date().toLocaleTimeString('zh-CN')
   } catch {
     backendStatus.value = false
     activeTargets.value = 0
     activeRules.value = 0
-    todayAttacks.value = 0
     totalAttacks.value = 0
-    blockedCount.value = 0
   }
 }
 
