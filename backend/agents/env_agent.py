@@ -281,8 +281,60 @@ class EnvAgent(BaseAgent):
             for img, info in VERIFIED_IMAGES.items()
         ])
 
-        prompt = f"""你是一个Docker靶场配置专家。根据以下用户需求，生成一个可以立即部署的Docker靶场配置。
+        # 重试机制：最多3次（第1次直接生成，第2次重新提示AI，第3次降级默认模板）
+        default_template = {
+            'name': '基础Web靶场',
+            'description': scenario_desc,
+            'components': [
+                {'type': 'container', 'name': 'web-server', 'image': 'nginx:alpine',
+                 'ports': [80], 'env': {}, 'command': None},
+            ],
+            'vulnerabilities': ['通用Web漏洞'],
+            'network': {'type': 'bridge', 'subnet': '172.24.0.0/16'}
+        }
+
+        for attempt in range(1, 4):  # 1, 2, 3
+            if attempt == 1:
+                # 第1次：正常生成
+                prompt = self._build_generation_prompt(scenario_desc, few_shot_text, image_guide)
+            else:
+                # 第2/3次：重新提示AI，告知上次解析失败
+                retry_hint = '\n【注意】上次生成的配置解析失败，请重新生成一个严格符合格式的JSON配置。'
+                prompt = self._build_generation_prompt(scenario_desc, few_shot_text, image_guide, retry_hint)
+
+            resp = self.ai_chat(prompt, task_type='range_generation')
+            if resp and '{' in resp:
+                try:
+                    start, end = resp.find('{'), resp.rfind('}') + 1
+                    config = json.loads(resp[start:end])
+                    if isinstance(config, dict) and 'components' in config:
+                        # 补全白名单中缺少的 env/command
+                        self._patch_components(config['components'])
+                        current_app.logger.info(f"AI靶场配置生成成功（第{attempt}次）")
+                        return config
+                    else:
+                        current_app.logger.warning(f"AI配置格式无效（第{attempt}次）: {resp[:200]}")
+                except Exception as e:
+                    current_app.logger.warning(f"AI配置解析失败（第{attempt}次）: {e}, resp={resp[:200]}")
+            else:
+                current_app.logger.warning(f"AI返回无效响应（第{attempt}次）")
+
+            # 第3次失败后记录警告，使用默认模板
+            if attempt == 3:
+                current_app.logger.warning(f"AI配置生成重试耗尽，降级使用默认模板")
+                Log.create('warning', 'env_agent',
+                           f"AI配置生成重试3次均失败，降级使用默认模板: {scenario_desc[:50]}",
+                           user_id=self.user_id)
+
+        # 兜底：返回最简单的 Web 靶场
+        return default_template
+
+    def _build_generation_prompt(self, scenario_desc: str, few_shot_text: str,
+                                  image_guide: str, retry_hint: str = '') -> str:
+        """构建AI生成配置的prompt"""
+        return f"""你是一个Docker靶场配置专家。根据以下用户需求，生成一个可以立即部署的Docker靶场配置。
 {few_shot_text}
+{retry_hint}
 【用户需求】：{scenario_desc}
 
 【可用镜像白名单】（只能从下面选，不能使用其他镜像）：
@@ -295,8 +347,9 @@ class EnvAgent(BaseAgent):
 4. vulnerables/web-dvwa、webgoat/webgoat-8.0、bkimminich/juice-shop 是自包含漏洞靶场，env 和 command 均留空，端口分别为 80、8080、3000
 5. components 中每个组件必须有 name（英文小写连字符）、image、ports、env、command 五个字段
 6. 组件数量 2~4 个，不要过多
+7. 必须返回纯JSON，不要有任何解释文字
 
-请返回纯 JSON，格式如下，不要有任何解释文字：
+请返回纯 JSON，格式如下：
 {{
   "name": "靶场名称（简短中文）",
   "description": "详细描述",
@@ -313,30 +366,6 @@ class EnvAgent(BaseAgent):
   "vulnerabilities": ["漏洞类型"],
   "network": {{"type": "bridge", "subnet": "172.24.0.0/16"}}
 }}"""
-
-        resp = self.ai_chat(prompt, task_type='range_generation')
-        if resp and '{' in resp:
-            try:
-                start, end = resp.find('{'), resp.rfind('}') + 1
-                config = json.loads(resp[start:end])
-                if isinstance(config, dict) and 'components' in config:
-                    # 补全白名单中缺少的 env/command
-                    self._patch_components(config['components'])
-                    return config
-            except Exception as e:
-                current_app.logger.warning(f"AI配置解析失败: {e}, resp={resp[:200]}")
-
-        # 兜底：返回最简单的 Web 靶场
-        return {
-            'name': '基础Web靶场',
-            'description': scenario_desc,
-            'components': [
-                {'type': 'container', 'name': 'web-server', 'image': 'nginx:alpine',
-                 'ports': [80], 'env': {}, 'command': None},
-            ],
-            'vulnerabilities': ['通用Web漏洞'],
-            'network': {'type': 'bridge', 'subnet': '172.24.0.0/16'}
-        }
 
     def _patch_components(self, components: List[Dict]):
         """为组件补全白名单中要求的 env 和 command（防止 AI 漏写）"""

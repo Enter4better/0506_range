@@ -118,6 +118,7 @@ class DatabaseService:
                     os TEXT,
                     status TEXT DEFAULT 'offline',
                     config TEXT,
+                    session_id TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
@@ -153,7 +154,26 @@ class DatabaseService:
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
-            
+
+            # 创建防御警报表（LLM生成的结构化防御建议）
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS defense_alerts (
+                    alert_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id TEXT,
+                    attack_type TEXT NOT NULL,
+                    attack_phase INTEGER DEFAULT 1,
+                    defense_level INTEGER DEFAULT 1,
+                    intercept_rate REAL DEFAULT 0,
+                    mitre_tactic TEXT,
+                    mitre_technique TEXT,
+                    impact_assessment TEXT,
+                    recommendations TEXT,
+                    rule_suggestions TEXT,
+                    raw_llm_response TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
             # 创建日志表
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS logs (

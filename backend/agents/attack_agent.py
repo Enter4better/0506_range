@@ -203,7 +203,7 @@ class AttackAgent(BaseAgent):
         """获取会话攻击状态"""
         total_phases = len(self.ATTACK_PHASES)
         if session_id not in self.session_data:
-            return {'current_phase': 0, 'phase_name': '已结束', 'total_phases': total_phases, 'total_attempts': 0, 'successes': 0}
+            return {'current_phase': 0, 'phase_name': '未开始', 'total_phases': total_phases, 'total_attempts': 0, 'successes': 0}
 
         session = self.session_data[session_id]
         return {

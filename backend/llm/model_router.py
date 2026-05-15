@@ -4,15 +4,15 @@
 
 设计思路：
   不同任务对模型有不同要求：
-  - 自然语言理解：通用大模型，中等温度，理解意图
-  - 靶场/配置生成：低温度，结构化输出，精确可靠
-  - 攻击规划：高温度，创造性强，策略多样
-  - 防御分析：极低温度，确定性判断，不能误判
-  - 报告生成：中等温度，长文本，结构清晰
-  - 安全分类：零温度，只做标签分类
+  - 自然语言理解：低温度，语义解析稳定性优先
+  - 靶场/配置生成：极低温度，结构化 JSON 输出，精确可靠
+  - 场景扩展：中高温度，生成场景变种，需要一定创造性
+  - 攻击分析：需要推理，多角度解读（用 Reasoner）
+  - 防御决策：极低温度，确定性判断，不能误判（用 Reasoner 更稳定）
 
-  所有任务都走 DeepSeek API，通过不同 model + temperature + max_tokens 区分。
-  若将来接入其他API（如本地微调模型），只需在此修改路由表即可。
+  Chat vs Reasoner 分工策略：
+  - deepseek-chat（V3）：免费，响应快，适合配置生成、语义理解、场景扩展
+  - deepseek-reasoner（R1）：深度推理，适合攻击分析、防御决策等需要深度分析的任务
 """
 import logging
 import os
@@ -20,70 +20,45 @@ import os
 logger = logging.getLogger('llm.model_router')
 
 
-# 任务类型 -> 模型配置路由表
+# 任务类型 -> 模型配置路由表（共5种实际使用的任务类型）
 TASK_ROUTE_MAP = {
+    # ========== Chat 模型 ==========
     # 自然语言理解：用户输入解析、场景描述分析
     'nlp_understanding': {
-        'model': os.getenv('MODEL_NLP', 'deepseek-chat'),
-        'temperature': 0.2,   # 降低温度，提升语义解析稳定性
+        'model': 'deepseek-chat',
+        'temperature': 0.2,
         'max_tokens': 1000,
-        'description': '自然语言理解 - 低温度，语义解析稳定性优先'
+        'description': '自然语言理解 - Chat模型，低温度，语义解析稳定性优先'
     },
-    # 靶场/环境配置生成：输出完整JSON，需要高精确度和足够上下文
+    # 靶场/环境配置生成：输出完整JSON，需要高精确度
     'range_generation': {
-        'model': os.getenv('MODEL_CODEGEN', 'deepseek-chat'),
-        'temperature': 0.1,   # 极低温度，JSON结构输出确定性最高
-        'max_tokens': 2500,   # 足够生成含多组件的完整配置JSON
-        'description': '配置生成 - 极低温度，完整JSON结构输出'
-    },
-    # 攻击规划：需要创造性和多样性
-    'attack_planning': {
-        'model': os.getenv('MODEL_ATTACK', 'deepseek-chat'),
-        'temperature': 0.85,
-        'max_tokens': 600,
-        'description': '攻击规划 - 高温度，策略创造性强'
-    },
-    # 攻击结果分析：单次攻击后的技术解读
-    'attack_analysis': {
-        'model': os.getenv('MODEL_ATTACK', 'deepseek-chat'),
-        'temperature': 0.7,
-        'max_tokens': 400,
-        'description': '攻击分析 - 中高温度，多角度解读'
-    },
-    # 防御决策：检测到攻击后的应对判断，需要稳定准确
-    'defense_decision': {
-        'model': os.getenv('MODEL_DEFENSE', 'deepseek-chat'),
-        'temperature': 0.05,
-        'max_tokens': 350,
-        'description': '防御决策 - 极低温度，确定性强'
-    },
-    # 安全分类：威胁等级/类型快速分类，极快响应
-    'security_classification': {
-        'model': os.getenv('MODEL_CLASSIFY', 'deepseek-chat'),
-        'temperature': 0.0,
-        'max_tokens': 120,
-        'description': '安全分类 - 零温度，确定性标签'
-    },
-    # 报告生成：长文本，结构化，需要一定流畅性
-    'report_generation': {
-        'model': os.getenv('MODEL_REPORT', 'deepseek-chat'),
-        'temperature': 0.45,
-        'max_tokens': 2048,
-        'description': '报告生成 - 中等温度，长文本结构输出'
+        'model': 'deepseek-chat',
+        'temperature': 0.1,
+        'max_tokens': 2500,
+        'description': '配置生成 - Chat模型，极低温度，完整JSON结构输出'
     },
     # 场景扩展：从基础场景生成变种，需要创造性
     'scenario_expansion': {
-        'model': os.getenv('MODEL_NLP', 'deepseek-chat'),
+        'model': 'deepseek-chat',
         'temperature': 0.65,
         'max_tokens': 1500,
-        'description': '场景扩展 - 中高温度，场景变种生成'
+        'description': '场景扩展 - Chat模型，中高温度，场景变种生成'
     },
-    # 可解释性推理：生成"因X，故Y"决策链
-    'explainability': {
-        'model': os.getenv('MODEL_NLP', 'deepseek-chat'),
-        'temperature': 0.2,
-        'max_tokens': 250,
-        'description': '可解释推理 - 低温度，逻辑链条清晰'
+
+    # ========== Reasoner 模型（深度推理） ==========
+    # 攻击结果分析：单次攻击后的技术解读，需要深度分析
+    'attack_analysis': {
+        'model': 'deepseek-reasoner',
+        'temperature': 0.7,
+        'max_tokens': 400,
+        'description': '攻击分析 - Reasoner模型，中高温度，多角度深度解读'
+    },
+    # 防御决策：检测到攻击后的应对判断，需要稳定准确
+    'defense_decision': {
+        'model': 'deepseek-reasoner',
+        'temperature': 0.05,
+        'max_tokens': 800,
+        'description': '防御决策 - Reasoner模型，极低温度，确定性强，深度推理'
     },
 }
 
@@ -92,15 +67,15 @@ _DEFAULT_CONFIG = {
     'model': 'deepseek-chat',
     'temperature': 0.3,
     'max_tokens': 500,
-    'description': '默认配置'
+    'description': '默认配置 - Chat模型'
 }
 
 
 def get_model_config(task_type: str) -> dict:
     """根据任务类型获取模型配置"""
     config = TASK_ROUTE_MAP.get(task_type, _DEFAULT_CONFIG)
-    logger.debug(f"[ModelRouter] task={task_type} → model={config['model']} "
-                 f"temperature={config['temperature']} max_tokens={config['max_tokens']}")
+    logger.info(f"[ModelRouter] task={task_type} → model={config['model']} "
+                f"temperature={config['temperature']} max_tokens={config['max_tokens']}")
     return config
 
 

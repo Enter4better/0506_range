@@ -9,6 +9,7 @@ if str(backend_dir) not in sys.path:
     sys.path.insert(0, str(backend_dir))
 
 from models.defense import Defense
+from models.defense_alert import DefenseAlert
 from models.log import Log
 
 defenses_bp = Blueprint('defenses', __name__, url_prefix='/api/defense')
@@ -209,28 +210,28 @@ def check_defense():
     """检查防御规则"""
     try:
         data = request.get_json()
-        
+
         required_fields = ['defense_id', 'attack_type', 'intensity']
         for field in required_fields:
             if not data.get(field):
                 return jsonify({'status': 'error', 'msg': f'{field} 是必填项'}), 400
-        
+
         defense_id = data['defense_id']
         attack_type = data['attack_type']
         intensity = int(data['intensity'])
-        
+
         if intensity < 1 or intensity > 10:
             return jsonify({'status': 'error', 'msg': '攻击强度必须在1-10之间'}), 400
-        
+
         defense = Defense.get_by_id(defense_id)
-        
+
         if not defense:
             return jsonify({'status': 'error', 'msg': '防御规则不存在'}), 404
-        
+
         result = defense.check_attack(attack_type, intensity)
-        
+
         Log.create('info', 'defense', f'防御检查: {defense.name} - {attack_type}')
-        
+
         return jsonify({
             'status': 'success',
             'result': result
@@ -238,3 +239,78 @@ def check_defense():
     except Exception as e:
         current_app.logger.error(f"检查防御规则失败: {e}")
         return jsonify({'status': 'error', 'msg': '检查防御规则失败'}), 500
+
+
+# ==================== 防御警报 API（LLM生成的结构化建议） ====================
+
+@defenses_bp.route('/alerts', methods=['GET'])
+def list_defense_alerts():
+    """获取防御警报列表"""
+    try:
+        limit = int(request.args.get('limit', 50))
+        offset = int(request.args.get('offset', 0))
+
+        alerts, total = DefenseAlert.list_all(limit=limit, offset=offset)
+
+        return jsonify({
+            'status': 'success',
+            'alerts': [alert.to_dict() for alert in alerts],
+            'total': total,
+            'limit': limit,
+            'offset': offset
+        }), 200
+    except Exception as e:
+        current_app.logger.error(f"获取防御警报失败: {e}")
+        return jsonify({'status': 'error', 'msg': str(e)}), 500
+
+
+@defenses_bp.route('/alerts/recent', methods=['GET'])
+def recent_defense_alerts():
+    """获取最近的防御警报"""
+    try:
+        limit = int(request.args.get('limit', 20))
+        alerts = DefenseAlert.get_recent(limit=limit)
+
+        return jsonify({
+            'status': 'success',
+            'alerts': [alert.to_dict() for alert in alerts]
+        }), 200
+    except Exception as e:
+        current_app.logger.error(f"获取最近警报失败: {e}")
+        return jsonify({'status': 'error', 'msg': str(e)}), 500
+
+
+@defenses_bp.route('/alerts/<session_id>', methods=['GET'])
+def get_session_alerts(session_id):
+    """获取特定会话的防御警报"""
+    try:
+        limit = int(request.args.get('limit', 50))
+        alerts = DefenseAlert.get_by_session(session_id, limit=limit)
+
+        return jsonify({
+            'status': 'success',
+            'session_id': session_id,
+            'alerts': [alert.to_dict() for alert in alerts],
+            'count': len(alerts)
+        }), 200
+    except Exception as e:
+        current_app.logger.error(f"获取会话警报失败: {e}")
+        return jsonify({'status': 'error', 'msg': str(e)}), 500
+
+
+@defenses_bp.route('/alerts/<int:alert_id>', methods=['GET'])
+def get_alert_by_id(alert_id):
+    """根据ID获取单条警报"""
+    try:
+        alert = DefenseAlert.get_by_id(alert_id)
+
+        if not alert:
+            return jsonify({'status': 'error', 'msg': '警报不存在'}), 404
+
+        return jsonify({
+            'status': 'success',
+            'alert': alert.to_dict()
+        }), 200
+    except Exception as e:
+        current_app.logger.error(f"获取警报详情失败: {e}")
+        return jsonify({'status': 'error', 'msg': str(e)}), 500

@@ -337,5 +337,419 @@
       ]
     },
     "timestamp": "2026-05-13T17:22:41.243830"
+  },
+  {
+    "input": "Web服务靶场：包含nginx和mysql的典型Web应用环境",
+    "output": {
+      "components": [
+        {
+          "command": null,
+          "env": {},
+          "image": "nginx:alpine",
+          "name": "web-server",
+          "ports": [
+            80
+          ],
+          "type": "container"
+        },
+        {
+          "command": null,
+          "env": {
+            "MYSQL_DATABASE": "testdb",
+            "MYSQL_ROOT_PASSWORD": "Range@123"
+          },
+          "image": "mysql:8.0",
+          "name": "db-server",
+          "ports": [
+            3306
+          ],
+          "type": "container"
+        }
+      ],
+      "description": "基于Nginx和MySQL构建的典型Web应用环境，用于模拟和测试常见Web安全漏洞",
+      "name": "Web应用安全测试靶场",
+      "network": {
+        "subnet": "172.20.0.0/16",
+        "type": "bridge"
+      },
+      "vulnerabilities": [
+        "SQL注入漏洞",
+        "跨站脚本攻击（XSS）",
+        "文件上传漏洞"
+      ]
+    },
+    "timestamp": "2026-05-14T17:05:18.356794"
+  },
+  {
+    "input": "数据库服务靶场：mysql和redis的典型数据库环境",
+    "output": {
+      "components": [
+        {
+          "command": null,
+          "env": {},
+          "image": "nginx:alpine",
+          "name": "web-server",
+          "ports": [
+            80
+          ],
+          "type": "container"
+        },
+        {
+          "command": null,
+          "env": {
+            "MYSQL_DATABASE": "testdb",
+            "MYSQL_ROOT_PASSWORD": "Range@123"
+          },
+          "image": "mysql:8.0",
+          "name": "db-server",
+          "ports": [
+            3306
+          ],
+          "type": "container"
+        }
+      ],
+      "description": "包含MySQL和Redis的典型数据库服务环境，用于数据库安全测试与漏洞演练",
+      "name": "数据库服务靶场（MySQL + Redis）",
+      "network": {
+        "subnet": "172.20.0.0/16",
+        "type": "bridge"
+      },
+      "vulnerabilities": [
+        "SQL注入",
+        "Redis未授权访问",
+        "弱口令爆破",
+        "数据库配置泄露"
+      ]
+    },
+    "timestamp": "2026-05-14T17:05:23.963794"
+  },
+  {
+    "input": "DVWA综合漏洞靶场",
+    "output": {
+      "components": [
+        {
+          "command": null,
+          "env": {},
+          "image": "vulnerables/web-dvwa",
+          "name": "dvwa",
+          "ports": [
+            80
+          ],
+          "type": "container"
+        }
+      ],
+      "description": "基于vulnerables/web-dvwa镜像构建的DVWA（Damn Vulnerable Web Application）综合漏洞靶场，集成SQL注入、XSS、文件包含、CSRF、命令注入、文件上传等常见Web安全漏洞，适用于渗透测试实战与Web漏洞学习。",
+      "name": "DVWA综合漏洞靶场",
+      "network": {
+        "subnet": "172.24.0.0/16",
+        "type": "bridge"
+      },
+      "vulnerabilities": [
+        "SQL注入",
+        "跨站脚本(XSS)",
+        "文件包含",
+        "CSRF",
+        "命令注入",
+        "文件上传"
+      ]
+    },
+    "timestamp": "2026-05-14T17:05:32.063042"
+  },
+  {
+    "input": "WebGoat OWASP教学靶场",
+    "output": {
+      "components": [
+        {
+          "command": null,
+          "env": {},
+          "image": "nginx:alpine",
+          "name": "web-server",
+          "ports": [
+            80
+          ],
+          "type": "container"
+        },
+        {
+          "command": null,
+          "env": {
+            "MYSQL_DATABASE": "testdb",
+            "MYSQL_ROOT_PASSWORD": "Range@123"
+          },
+          "image": "mysql:8.0",
+          "name": "db-server",
+          "ports": [
+            3306
+          ],
+          "type": "container"
+        }
+      ],
+      "description": "基于OWASP WebGoat的Web安全教学环境，提供交互式漏洞实验与安全编码练习，覆盖OWASP Top 10常见安全风险。",
+      "name": "WebGoat OWASP教学靶场",
+      "network": {
+        "subnet": "172.20.0.0/16",
+        "type": "bridge"
+      },
+      "vulnerabilities": [
+        "SQL注入",
+        "XSS跨站脚本",
+        "文件上传",
+        "身份认证失效",
+        "敏感数据泄露",
+        "XML外部实体注入(XXE)",
+        "不安全的反序列化",
+        "使用含有已知漏洞的组件"
+      ]
+    },
+    "timestamp": "2026-05-14T17:05:38.004852"
+  },
+  {
+    "input": "JuiceShop OWASP综合靶场",
+    "output": {
+      "components": [
+        {
+          "command": null,
+          "env": {},
+          "image": "bkimminich/juice-shop",
+          "name": "juice-shop",
+          "ports": [
+            3000
+          ],
+          "type": "container"
+        }
+      ],
+      "description": "基于 OWASP Juice Shop 的综合性 Web 安全训练平台，覆盖 OWASP Top 10 及常见漏洞场景，适用于渗透测试、安全培训与漏洞复现。",
+      "name": "JuiceShop OWASP 综合安全靶场",
+      "network": {
+        "subnet": "172.24.0.0/16",
+        "type": "bridge"
+      },
+      "vulnerabilities": [
+        "SQL注入",
+        "跨站脚本(XSS)",
+        "跨站请求伪造(CSRF)",
+        "文件上传漏洞",
+        "身份认证绕过",
+        "敏感信息泄露",
+        "路径遍历",
+        "不安全的反序列化",
+        "SSRF(服务端请求伪造)",
+        "XXE(XML外部实体注入)"
+      ]
+    },
+    "timestamp": "2026-05-14T17:05:46.268473"
+  },
+  {
+    "input": "我需要一个容器安全靶场：模拟容器隔离环境，用于容器安全研究，包含容器逃逸、镜像漏洞、特权容器滥用漏洞",
+    "output": {
+      "components": [
+        {
+          "command": null,
+          "env": {},
+          "image": "nginx:alpine",
+          "name": "web-server",
+          "ports": [
+            80
+          ],
+          "type": "container"
+        },
+        {
+          "command": null,
+          "env": {
+            "MYSQL_DATABASE": "testdb",
+            "MYSQL_ROOT_PASSWORD": "Range@123"
+          },
+          "image": "mysql:8.0",
+          "name": "db-server",
+          "ports": [
+            3306
+          ],
+          "type": "container"
+        },
+        {
+          "command": "sleep infinity",
+          "env": {},
+          "image": "ubuntu:22.04",
+          "name": "pivot-host",
+          "ports": [
+            22
+          ],
+          "type": "container"
+        },
+        {
+          "command": null,
+          "env": {
+            "MYSQL_ROOT_PASSWORD": "Range@123",
+            "MYSQL_DATABASE": "testdb"
+          },
+          "image": "mysql:8.0",
+          "name": "internal-db",
+          "ports": [
+            3306
+          ],
+          "type": "container"
+        }
+      ],
+      "description": "包含Nginx和MySQL的典型Web应用环境，模拟内网横向渗透",
+      "id": "Web安全_internal",
+      "is_variant": true,
+      "name": "Web安全靶场（带内网横向）",
+      "network": {
+        "subnet": "172.20.0.0/16",
+        "type": "bridge"
+      },
+      "variant_label": "带内网横向",
+      "vulnerabilities": [
+        "文件上传",
+        "SQL注入",
+        "内网扫描",
+        "XSS跨站脚本",
+        "横向移动",
+        "凭证窃取",
+        "容器逃逸（如挂载宿主机敏感目录、cap_sys_admin滥用）",
+        "镜像漏洞（如基础镜像含已知CVE、弱配置）",
+        "特权容器滥用（如--privileged模式、cap_add过度授权）"
+      ]
+    },
+    "timestamp": "2026-05-14T19:29:21.475595"
+  },
+  {
+    "input": "我需要一个DVWA 综合漏洞靶场：Damn Vulnerable Web Application — 涵盖 SQL 注入、XSS、CSRF、文件上传、命令执行等 OWASP Top 10 漏洞，包含SQL注入、XSS跨站脚本、CSRF、文件上传、命令执行、暴力破解漏洞",
+    "output": {
+      "components": [
+        {
+          "command": null,
+          "env": {},
+          "image": "nginx:alpine",
+          "name": "web-server",
+          "ports": [
+            80
+          ],
+          "type": "container"
+        },
+        {
+          "command": null,
+          "env": {
+            "MYSQL_DATABASE": "testdb",
+            "MYSQL_ROOT_PASSWORD": "Range@123"
+          },
+          "image": "mysql:8.0",
+          "name": "db-server",
+          "ports": [
+            3306
+          ],
+          "type": "container"
+        },
+        {
+          "command": null,
+          "env": {},
+          "image": "nginx:alpine",
+          "name": "waf-proxy",
+          "ports": [
+            8080
+          ],
+          "type": "container"
+        }
+      ],
+      "description": "包含Nginx和MySQL的典型Web应用环境，前置WAF，验证绕过能力",
+      "id": "Web安全_waf",
+      "is_variant": true,
+      "name": "Web安全靶场（带WAF防护）",
+      "network": {
+        "subnet": "172.20.0.0/16",
+        "type": "bridge"
+      },
+      "variant_label": "带WAF防护",
+      "vulnerabilities": [
+        "文件上传",
+        "HTTP走私",
+        "SQL注入",
+        "XSS跨站脚本",
+        "WAF绕过",
+        "CSRF",
+        "命令执行",
+        "暴力破解"
+      ]
+    },
+    "timestamp": "2026-05-14T19:30:58.571164"
+  },
+  {
+    "input": "我需要一个网络安全靶场：包含Web服务和内网主机的网络渗透环境，包含端口扫描、暴力破解、横向移动漏洞",
+    "output": {
+      "components": [
+        {
+          "command": null,
+          "env": {},
+          "image": "nginx:alpine",
+          "name": "web-server",
+          "ports": [
+            80
+          ],
+          "type": "container"
+        },
+        {
+          "command": null,
+          "env": {
+            "MYSQL_DATABASE": "testdb",
+            "MYSQL_ROOT_PASSWORD": "Range@123"
+          },
+          "image": "mysql:8.0",
+          "name": "db-server",
+          "ports": [
+            3306
+          ],
+          "type": "container"
+        }
+      ],
+      "description": "模拟企业内网环境，包含Web应用与数据库服务，支持端口扫描、暴力破解及横向移动等渗透测试训练",
+      "name": "内网渗透综合靶场",
+      "network": {
+        "subnet": "172.20.0.0/16",
+        "type": "bridge"
+      },
+      "vulnerabilities": [
+        "弱口令暴力破解",
+        "SQL注入",
+        "XSS跨站脚本",
+        "文件上传",
+        "端口扫描暴露",
+        "内网横向移动"
+      ]
+    },
+    "timestamp": "2026-05-15T13:02:45.497008"
+  },
+  {
+    "input": "我需要一个容器安全靶场：模拟容器隔离环境，用于容器安全研究，包含容器逃逸",
+    "output": {
+      "components": [
+        {
+          "command": "sleep infinity",
+          "env": {},
+          "image": "alpine:latest",
+          "name": "alpine-target",
+          "ports": [],
+          "type": "container"
+        },
+        {
+          "command": "sleep infinity",
+          "env": {},
+          "image": "ubuntu:22.04",
+          "name": "ubuntu-victim",
+          "ports": [
+            22
+          ],
+          "type": "container"
+        }
+      ],
+      "description": "模拟容器隔离环境，用于容器安全研究，重点复现容器逃逸攻击场景，支持特权容器滥用、镜像漏洞利用等安全实验",
+      "name": "容器安全靶场",
+      "network": {
+        "subnet": "172.22.0.0/16",
+        "type": "bridge"
+      },
+      "vulnerabilities": [
+        "容器逃逸"
+      ]
+    },
+    "timestamp": "2026-05-15T19:49:50.115375"
   }
 ]

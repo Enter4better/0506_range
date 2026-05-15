@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
 """
 防御模拟Agent - 根据攻击阶段和强度自适应防御
+包含LLM生成的结构化防御建议（MITRE ATT&CK分类、影响评估、处置建议）
 """
 import logging
 import random
+import json
 from datetime import datetime
 from typing import Dict, List, Any
 
@@ -171,7 +173,33 @@ class DefenseAgent(BaseAgent):
         if matched_rules:
             for rule in matched_rules:
                 actions.insert(0, f"📋 规则生效: {rule.name} (覆盖率{rule.coverage}%)")
-        
+
+        # 调用LLM生成结构化防御建议
+        defense_suggestion = self._generate_defense_suggestion(
+            attack_type, attack_phase, final_intercept_rate, current_level
+        )
+
+        # 保存到数据库
+        try:
+            from models.defense_alert import DefenseAlert
+            alert = DefenseAlert(
+                session_id=session_id,
+                attack_type=attack_type,
+                attack_phase=attack_phase,
+                defense_level=current_level,
+                intercept_rate=round(final_intercept_rate, 3),
+                mitre_tactic=defense_suggestion.get('mitre_tactic'),
+                mitre_technique=defense_suggestion.get('mitre_technique'),
+                impact_assessment=defense_suggestion.get('impact_assessment'),
+                recommendations=defense_suggestion.get('recommendations', []),
+                rule_suggestions=defense_suggestion.get('rule_suggestions', []),
+                raw_llm_response=defense_suggestion.get('raw_response')
+            )
+            alert.save()
+            logger.info(f"[DefenseAlert] 已保存警报到数据库: {attack_type}")
+        except Exception as e:
+            logger.error(f"[DefenseAlert] 保存警报失败: {e}")
+
         # 记录防御日志
         log_entry = {
             'timestamp': datetime.now().isoformat(),
@@ -184,10 +212,15 @@ class DefenseAgent(BaseAgent):
             'source_ip': source_ip,
             'session_id': session_id,
             'matched_rules': [r.name for r in matched_rules],
-            'active_rules_count': len(self._loaded_rules)
+            'active_rules_count': len(self._loaded_rules),
+            'mitre_tactic': defense_suggestion.get('mitre_tactic'),
+            'mitre_technique': defense_suggestion.get('mitre_technique'),
+            'impact_assessment': defense_suggestion.get('impact_assessment'),
+            'recommendations': defense_suggestion.get('recommendations', []),
+            'rule_suggestions': defense_suggestion.get('rule_suggestions', [])
         }
         self.defense_logs.append(log_entry)
-        
+
         return {
             'detected': True,
             'attack_type': attack_type,
@@ -199,7 +232,14 @@ class DefenseAgent(BaseAgent):
             'blocked_ips': session['blocked_ips'],
             'responded_at': datetime.now().isoformat(),
             'matched_rules': [r.name for r in matched_rules],
-            'active_rules_count': len(self._loaded_rules)
+            'active_rules_count': len(self._loaded_rules),
+            # LLM生成的字段
+            'mitre_tactic': defense_suggestion.get('mitre_tactic'),
+            'mitre_technique': defense_suggestion.get('mitre_technique'),
+            'mitre_name': defense_suggestion.get('mitre_name'),
+            'impact_assessment': defense_suggestion.get('impact_assessment'),
+            'recommendations': defense_suggestion.get('recommendations', []),
+            'rule_suggestions': defense_suggestion.get('rule_suggestions', [])
         }
     
     def _execute_defense_actions(self, attack_type: str, defense_level: int, 
@@ -232,6 +272,128 @@ class DefenseAgent(BaseAgent):
             actions.append(f"🔔 紧急告警: 高危攻击已上报")
         
         return actions
+
+    def _generate_defense_suggestion(self, attack_type: str, attack_phase: int,
+                                     intercept_rate: float, defense_level: int) -> Dict[str, Any]:
+        """
+        调用LLM生成结构化防御建议（MITRE ATT&CK分类、影响评估、处置建议）
+        """
+        # MITRE ATT&CK 映射表（简化版）
+        ATTACK_MITRE_MAP = {
+            'SQL注入': {'tactic': 'TA0001', 'technique': 'T1190', 'name': 'Exploit Public-Facing Application'},
+            'XSS攻击': {'tactic': 'TA0001', 'technique': 'T1183', 'name': 'Exploitation for Client Execution'},
+            'CSRF攻击': {'tactic': 'TA0001', 'technique': 'T1190', 'name': 'Cross-Site Request Forgery'},
+            '文件上传': {'tactic': 'TA0001', 'technique': 'T1190', 'name': 'Upload Malicious File'},
+            '命令执行': {'tactic': 'TA0002', 'technique': 'T1059', 'name': 'Command and Scripting Interpreter'},
+            'SSRF攻击': {'tactic': 'TA0001', 'technique': 'T1190', 'name': 'Server-Side Request Forgery'},
+            'XXE注入': {'tactic': 'TA0001', 'technique': 'T1190', 'name': 'XML External Entities'},
+            '端口扫描': {'tactic': 'TA0043', 'technique': 'T1046', 'name': 'Network Service Discovery'},
+            '暴力破解': {'tactic': 'TA0006', 'technique': 'T1110', 'name': 'Brute Force'},
+            '权限提升': {'tactic': 'TA0004', 'technique': 'T1068', 'name': 'Exploitation for Privilege Escalation'},
+            '容器逃逸': {'tactic': 'TA0004', 'technique': 'T1611', 'name': 'Escape to Host'},
+            '反弹Shell': {'tactic': 'TA0011', 'technique': 'T1059', 'name': 'Reverse Shell'},
+            '中间人攻击': {'tactic': 'TA0006', 'technique': 'T1557', 'name': 'Adversary-in-the-Middle'},
+            '后门植入': {'tactic': 'TA0003', 'technique': 'T1053', 'name': 'Scheduled Transfer'},
+            '横向移动': {'tactic': 'TA0008', 'technique': 'T1021', 'name': 'Remote Services'},
+            '数据外传': {'tactic': 'TA0010', 'technique': 'T1041', 'name': 'Exfiltration Over C2 Channel'},
+        }
+
+        mitre_info = ATTACK_MITRE_MAP.get(attack_type, {'tactic': 'TA0001', 'technique': 'T1190', 'name': 'Unknown'})
+
+        prompt = f"""你是一个网络安全防御专家。针对以下攻击生成结构化防御建议：
+
+攻击类型：{attack_type}
+攻击阶段：{attack_phase}（1-侦察, 2-武器化与投递, 3-漏洞利用, 4-持久化与提权, 5-横向移动, 6-目标行动）
+防御拦截率：{intercept_rate:.0%}
+防御等级：{defense_level}（1-监控, 2-过滤, 3-阻断, 4-封禁, 5-极限）
+
+请直接输出JSON格式（不要markdown代码块包裹），包含以下字段：
+- mitre_tactic: MITRE ATT&CK战术ID
+- mitre_technique: MITRE ATT&CK技术ID
+- mitre_name: MITRE ATT&CK技术名称
+- impact_assessment: 影响评估（1-2句话）
+- recommendations: 处置建议数组（3条）
+- rule_suggestions: 规则建议数组（1-2条）
+
+示例格式：
+{{"mitre_tactic":"TA0001","mitre_technique":"T1190","mitre_name":"Exploit Public-Facing Application","impact_assessment":"SQL注入可导致数据泄露","recommendations":["启用参数化查询","部署WAF规则"],"rule_suggestions":["iptables -A INPUT -s attacker_ip -j DROP"]}}
+"""
+
+        default_suggestion = {
+            'mitre_tactic': mitre_info['tactic'],
+            'mitre_technique': mitre_info['technique'],
+            'mitre_name': mitre_info['name'],
+            'impact_assessment': f'{attack_type}攻击可能影响系统机密性、完整性和可用性',
+            'recommendations': ['启用输入验证', '部署WAF规则', '开启入侵检测'],
+            'rule_suggestions': ['# 建议启用参数化查询', '# 建议部署WAF防护规则']
+        }
+
+        # 最多重试3次
+        for attempt in range(3):
+            try:
+                response = self.ai_chat(prompt, task_type='defense_decision')
+                if not response or len(response.strip()) < 10:
+                    logger.warning(f"[DefenseSuggestion] LLM返回空 (尝试 {attempt+1}/3)")
+                    continue
+
+                logger.info(f"[DefenseSuggestion] LLM原始响应: {response[:200]}")
+
+                # 更健壮的JSON解析：尝试多种方式提取JSON
+                data = None
+
+                # 去除markdown代码块标记
+                clean_response = response
+                if '```json' in clean_response:
+                    clean_response = clean_response.split('```json')[1].split('```')[0]
+                elif '```' in clean_response:
+                    clean_response = clean_response.split('```')[1].split('```')[0]
+
+                # 方式1: 查找 { 和 }
+                if '{' in clean_response and '}' in clean_response:
+                    start = clean_response.find('{')
+                    end = clean_response.rfind('}') + 1
+                    json_str = clean_response[start:end]
+                    try:
+                        data = json.loads(json_str)
+                    except json.JSONDecodeError:
+                        pass
+
+                # 方式2: 尝试直接解析整个响应
+                if data is None:
+                    try:
+                        data = json.loads(clean_response.strip())
+                    except json.JSONDecodeError:
+                        pass
+
+                # 方式3: 使用正则表达式查找JSON对象
+                if data is None:
+                    import re
+                    # 匹配完整的JSON对象（处理嵌套）
+                    match = re.search(r'\{(?:[^{}]|"[^"]*")*\}', clean_response, re.DOTALL)
+                    if match:
+                        try:
+                            data = json.loads(match.group())
+                        except json.JSONDecodeError:
+                            pass
+
+                if data and 'impact_assessment' in data and 'recommendations' in data:
+                    logger.info(f"[DefenseSuggestion] LLM生成成功: {attack_type}")
+                    return {
+                        'mitre_tactic': data.get('mitre_tactic', mitre_info['tactic']),
+                        'mitre_technique': data.get('mitre_technique', mitre_info['technique']),
+                        'mitre_name': data.get('mitre_name', mitre_info['name']),
+                        'impact_assessment': data.get('impact_assessment', ''),
+                        'recommendations': data.get('recommendations', []) if isinstance(data.get('recommendations'), list) else [],
+                        'rule_suggestions': data.get('rule_suggestions', []) if isinstance(data.get('rule_suggestions'), list) else [],
+                        'raw_response': response
+                    }
+            except Exception as e:
+                logger.warning(f"[DefenseSuggestion] 解析异常 (尝试 {attempt+1}/3): {e}")
+
+        # 降级返回默认建议
+        logger.info(f"[DefenseSuggestion] 使用默认建议: {attack_type}")
+        default_suggestion['raw_response'] = json.dumps(default_suggestion, ensure_ascii=False)
+        return default_suggestion
     
     def get_status(self, session_id: str = None) -> Dict:
         """获取防御状态"""
