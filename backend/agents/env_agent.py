@@ -177,13 +177,12 @@ class EnvAgent(BaseAgent):
             examples = self.load_training_examples()
             # 避免重复（按 input 去重）
             examples = [e for e in examples if e.get('input') != user_input]
+            # 追加新样本（避免重复，按 input 去重）
             examples.append({
                 'input': user_input,
                 'output': config,
                 'timestamp': datetime.now().isoformat()
             })
-            # 只保留最近 20 条
-            examples = examples[-20:]
             with open(_TRAINING_FILE, 'w', encoding='utf-8') as f:
                 json.dump(examples, f, ensure_ascii=False, indent=2)
             return True
@@ -191,7 +190,7 @@ class EnvAgent(BaseAgent):
             current_app.logger.warning(f"保存训练样本失败: {e}")
             return False
 
-    def _find_relevant_examples(self, desc: str, max_count: int = 2) -> List[Dict]:
+    def _find_relevant_examples(self, desc: str, max_count: int = 3) -> List[Dict]:
         """根据关键词相似度找到最相关的 few-shot 样本"""
         examples = self.load_training_examples()
         if not examples:
