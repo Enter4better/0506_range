@@ -25,7 +25,7 @@
     </el-row>
 
     <el-row :gutter="16">
-      <!-- 左侧：攻击配置 + 攻击结果 -->
+      <!-- 左侧：攻击配置 -->
       <el-col :xs="24" :lg="14">
         <!-- 攻击配置表单 -->
         <el-card shadow="hover" class="tech-card" style="margin-bottom: 16px;">
@@ -156,9 +156,12 @@
             </div>
           </div>
         </el-card>
+      </el-col>
 
-        <!-- 攻击结果（常态显示） -->
-        <el-card shadow="hover" class="tech-card">
+      <!-- 右侧：攻击结果 + 动态攻防进度 -->
+      <el-col :xs="24" :lg="10">
+        <!-- 攻击结果 -->
+        <el-card shadow="hover" class="tech-card" style="margin-bottom: 16px;">
           <template #header>
             <div class="card-header">
               <span class="card-title">
@@ -195,12 +198,8 @@
           </div>
         </el-card>
 
-      </el-col>
-
-      <!-- 右侧：动态攻防进度 + 攻击记录 -->
-      <el-col :xs="24" :lg="10">
         <!-- 动态攻防进度 -->
-        <el-card shadow="hover" class="tech-card" style="margin-bottom: 16px;">
+        <el-card shadow="hover" class="tech-card">
           <template #header>
             <div class="card-header">
               <span class="card-title">
@@ -244,18 +243,20 @@
             <p>暂无攻防数据，请发起攻击</p>
           </div>
         </el-card>
-
-        <!-- 攻击记录 -->
-        <AttackTimeline
-          :logs="attackLogs"
-          :total="attackTotal"
-          :current-page="attackLogPage"
-          :page-size="attackLogPageSize"
-          @refresh="loadAttackHistory(1)"
-          @page-change="loadAttackHistory"
-        />
       </el-col>
     </el-row>
+
+    <!-- 攻击记录（底部） -->
+    <el-card shadow="hover" class="tech-card" style="margin-top: 16px;">
+      <AttackTimeline
+        :logs="attackLogs"
+        :total="attackTotal"
+        :current-page="attackLogPage"
+        :page-size="attackLogPageSize"
+        @refresh="loadAttackHistory(1)"
+        @page-change="loadAttackHistory"
+      />
+    </el-card>
 
     <!-- 选择靶场对话框：点击行高亮，Enter 确认选中 -->
     <el-dialog v-model="targetDialogVisible" title="选择靶场（点击行高亮后按 Enter 确认）" width="1200px" class="tech-dialog"
@@ -655,7 +656,9 @@ async function loadStats() {
     if (listRes.status === 'success') {
       stats.total = listRes.total || 0
       const attacks = listRes.attacks || []
-      stats.success = attacks.filter(a => a.status === 'completed' || a.status === 'failed' || a.status === 'blocked').length
+      stats.success = attacks.filter(a => a.status === 'completed').length
+      stats.failed = attacks.filter(a => a.status === 'failed').length
+      stats.running = attacks.filter(a => a.status === 'running').length
     }
   } catch (e) {
     console.error('加载攻击统计失败', e)

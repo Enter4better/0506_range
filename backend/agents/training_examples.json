@@ -751,5 +751,45 @@
       ]
     },
     "timestamp": "2026-05-15T19:49:50.115375"
+  },
+  {
+    "input": "集成Windows与Linux服务器环境，支持权限提升、容器逃逸、内核漏洞利用、恶意软件分析等系统层攻防演练的综合靶场",
+    "output": {
+      "components": [
+        {
+          "command": "sleep infinity",
+          "env": {},
+          "image": "alpine:latest",
+          "name": "alpine-target",
+          "ports": [],
+          "type": "container"
+        },
+        {
+          "command": "sleep infinity",
+          "env": {},
+          "image": "ubuntu:22.04",
+          "name": "ubuntu-victim",
+          "ports": [
+            22
+          ],
+          "type": "container"
+        }
+      ],
+      "description": "集成Windows与Linux服务器环境，支持权限提升、容器逃逸、内核漏洞利用、恶意软件分析等系统层攻防演练的综合靶场",
+      "name": "系统安全攻防靶场",
+      "network": {
+        "subnet": "172.22.0.0/16",
+        "type": "bridge"
+      },
+      "vulnerabilities": [
+        "权限提升",
+        "容器逃逸",
+        "内核漏洞利用",
+        "恶意软件分析",
+        "系统配置缺陷",
+        "服务漏洞"
+      ]
+    },
+    "timestamp": "2026-05-18T18:07:55.085362"
   }
 ]

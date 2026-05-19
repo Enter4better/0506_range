@@ -13,13 +13,20 @@
     <!-- 控制栏 -->
     <el-card class="tech-card" style="margin-bottom: 16px;">
       <div class="control-bar">
-        <el-select v-model="selectedTargetId" placeholder="选择靶场" filterable style="width: 250px"
+        <el-select v-model="selectedScenarioName" placeholder="选择靶场场景" filterable style="width: 280px"
           @change="onTargetChange">
-          <el-option v-for="target in targets" :key="target.id" :label="target.name" :value="target.id" />
+          <el-option-group v-for="scenario in scenarios" :key="scenario.scenario_name" :label="scenario.scenario_name">
+            <el-option v-for="c in scenario.containers" :key="c.id" :label="c.name.replace('cyber_range_', '')" :value="scenario.scenario_name + '|' + c.id">
+              <div style="display:flex;justify-content:space-between;align-items:center;">
+                <span>{{ c.name.replace('cyber_range_', '').replace(/_20\d{12}$/, '') }}</span>
+                <el-tag size="small" type="info" style="margin-left:8px;">{{ c.port }}</el-tag>
+              </div>
+            </el-option>
+          </el-option-group>
         </el-select>
 
         <el-tooltip content="演练会话是一次完整的攻防演练，包含从开始到结束的所有攻击和防御记录" placement="top">
-          <el-select v-model="selectedSessionId" placeholder="选择演练会话" filterable style="width: 250px"
+          <el-select v-model="selectedSessionId" placeholder="选择演练会话（可选）" filterable style="width: 250px"
             @change="onSessionChange">
             <el-option v-for="session in sessions" :key="session.session_id" :label="session.session_id"
               :value="session.session_id" />
@@ -32,7 +39,7 @@
           </el-icon>
           刷新
         </el-button>
-        <el-button type="warning" @click="exportTopology" :disabled="!selectedTargetId">
+        <el-button type="warning" @click="exportTopology" :disabled="!selectedContainerId">
           <el-icon>
             <Download />
           </el-icon>
@@ -43,7 +50,7 @@
     </el-card>
 
     <!-- 攻防态势卡片 -->
-    <el-row :gutter="16" style="margin-bottom: 16px;" v-if="attackStatus">
+    <el-row :gutter="16" style="margin-bottom: 16px;" v-if="attackStatus && selectedScenarioName">
       <el-col :xs="12" :sm="6">
         <div class="status-card attack">
           <div class="status-label">攻击阶段</div>
@@ -72,9 +79,9 @@
       </el-col>
       <el-col :xs="12" :sm="6">
         <div class="status-card">
-          <div class="status-label">攻击成功</div>
-          <div class="status-value">{{ attackStatus.successes || 0 }}</div>
-          <div class="status-sub">次成功尝试</div>
+          <div class="status-label">容器节点</div>
+          <div class="status-value">{{ topology.total_containers || 0 }}</div>
+          <div class="status-sub">个容器</div>
         </div>
       </el-col>
       <el-col :xs="12" :sm="6">
@@ -87,15 +94,16 @@
     </el-row>
 
     <!-- 拓扑图 -->
-    <el-card class="tech-card" v-if="selectedTarget">
+    <el-card class="tech-card" v-if="selectedScenarioName && topology.nodes?.length">
       <template #header>
         <div class="card-header">
           <span><el-icon>
               <Connection />
-            </el-icon> {{ selectedTarget.name }} - 攻防拓扑</span>
+            </el-icon> {{ selectedScenarioName }} - 攻防拓扑</span>
           <div class="header-tags">
             <el-tag size="small" type="danger">攻击阶段: {{ attackStatus?.phase_name || '未开始' }}</el-tag>
             <el-tag size="small" type="success">防御等级: {{ defenseStatus?.level_name || '监控级' }}</el-tag>
+            <el-tag size="small" type="info">容器: {{ topology.total_containers || 0 }}</el-tag>
           </div>
         </div>
       </template>
@@ -148,17 +156,28 @@
           <span class="detail-value">{{ nodeDetail.name }}</span>
         </div>
         <div class="detail-row">
+          <span class="detail-label">容器名称</span>
+          <span class="detail-value" style="font-size:12px;color:var(--text-secondary)">{{ nodeDetail.container_name || 'N/A' }}</span>
+        </div>
+        <div class="detail-row">
           <span class="detail-label">节点类型</span>
-          <el-tag size="small" :color="getNodeColor(nodeDetail.type)">{{ nodeLabels[nodeDetail.type] || nodeDetail.type
-          }}</el-tag>
+          <el-tag size="small" :color="getNodeColor(nodeDetail.type)">{{ nodeLabels[nodeDetail.type] || nodeDetail.type }}</el-tag>
         </div>
         <div class="detail-row">
           <span class="detail-label">IP 地址</span>
           <span class="detail-value mono">{{ nodeDetail.ip || 'N/A' }}</span>
         </div>
         <div class="detail-row">
-          <span class="detail-label">端口</span>
+          <span class="detail-label">主机端口</span>
+          <span class="detail-value mono">{{ nodeDetail.host_port || 'N/A' }}</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">容器端口</span>
           <span class="detail-value mono">{{ nodeDetail.port || 'N/A' }}</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">镜像</span>
+          <span class="detail-value" style="font-size:12px;">{{ nodeDetail.image || 'N/A' }}</span>
         </div>
         <div class="detail-row">
           <span class="detail-label">威胁等级</span>
@@ -189,9 +208,10 @@ import { Connection, Refresh, Loading, Download } from '@element-plus/icons-vue'
 import request from '../utils/request'
 
 
-const targets = ref([])
+const scenarios = ref([])          // 场景列表（按 scenario_name 分组）
 const sessions = ref([])
-const selectedTargetId = ref('')
+const selectedScenarioName = ref('')   // 当前选中的场景名
+const selectedContainerId = ref('')   // 当前选中的容器 ID（用于查拓扑）
 const selectedSessionId = ref('')
 const selectedTarget = ref(null)
 const attackStatus = ref(null)
@@ -231,10 +251,10 @@ async function loadTargets() {
   try {
     const res = await request.get('/topology')
     if (res.status === 'success') {
-      targets.value = res.targets || []
+      scenarios.value = res.senarios || res.scenarios || []
     }
   } catch (e) {
-    console.error('加载靶场列表失败', e)
+    console.error('加载场景列表失败', e)
   }
 }
 
@@ -265,13 +285,13 @@ async function loadSessions(targetId) {
 
 
 async function loadTopology() {
-  if (!selectedTargetId.value) {
+  if (!selectedContainerId.value) {
     return
   }
 
   loading.value = true
   try {
-    const params = { target_id: selectedTargetId.value }
+    const params = { target_id: selectedContainerId.value }
     if (selectedSessionId.value) {
       params.session_id = selectedSessionId.value
     }
@@ -364,8 +384,8 @@ function drawTopology() {
         <text x="${node.x}" y="${node.y + 4}" text-anchor="middle" fill="#606888" font-size="9">
           ${label}
         </text>
-        ${node.port ? `<text x="${node.x}" y="${node.y + 13}" text-anchor="middle" fill="#606888" font-size="8">
-          端口: ${node.port}
+        ${node.ip ? `<text x="${node.x}" y="${node.y + 13}" text-anchor="middle" fill="#5090a0" font-size="8">
+          ${node.ip}
         </text>` : ''}
         ${threat === 'critical' ? `<text x="${node.x}" y="${node.y - 18}" text-anchor="middle" fill="#c0392b" font-size="8">
           ⚠ 严重威胁
@@ -419,9 +439,9 @@ function getNodeColor(type) {
 
 // 导出拓扑
 async function exportTopology() {
-  if (!selectedTargetId.value) return
+  if (!selectedContainerId.value) return
   try {
-    const params = { target_id: selectedTargetId.value, format: 'json' }
+    const params = { target_id: selectedContainerId.value, format: 'json' }
     if (selectedSessionId.value) {
       params.session_id = selectedSessionId.value
     }
@@ -447,13 +467,18 @@ async function exportTopology() {
   }
 }
 
-function onTargetChange() {
+function onTargetChange(val) {
   selectedSessionId.value = ''
-  // 选择靶场后加载该靶场关联的演练会话
-  loadSessions(selectedTargetId.value)
+  if (!val) return
+  // val 格式：scenario_name|c.id
+  const parts = val.split('|')
+  const scenarioName = parts[0]
+  const containerId = parseInt(parts[1])
+  selectedScenarioName.value = scenarioName
+  selectedContainerId.value = containerId
+  loadSessions(containerId)
   loadTopology()
 }
-
 
 function onSessionChange() {
   loadTopology()

@@ -26,27 +26,62 @@
       </el-col>
     </el-row>
 
-    <!-- 防御策略表 -->
-    <el-card class="tech-card">
+    <!-- 防御日志 + AI建议（第一行） -->
+    <el-card class="tech-card" style="margin-top: 16px;">
       <template #header>
         <div class="card-header">
           <span><el-icon>
-              <List />
-            </el-icon> 自适应防御策略</span>
-          <span class="tip">攻击强度越高、轮次越多 → 防御等级越高</span>
+              <Document />
+            </el-icon> 防御执行日志（共 {{ defenseTotal }} 条）</span>
+          <el-button size="small" @click="loadDefenseLogs(1)">刷新</el-button>
         </div>
       </template>
-      <el-table :data="defenseTableData" stripe size="small">
-        <el-table-column prop="attack_type" label="攻击类型" width="120" />
-        <el-table-column prop="level_1" label="轻度防御(强度1-2)" />
-        <el-table-column prop="level_2" label="基础防御(强度3-4)" />
-        <el-table-column prop="level_3" label="中级防御(强度5-6)" />
-        <el-table-column prop="level_4" label="高级防御(强度7-8)" />
-        <el-table-column prop="level_5" label="极致防御(强度9-10)" />
-      </el-table>
+      <div class="log-list">
+        <div v-for="log in defenseLogs" :key="log.timestamp" class="log-item" :class="'level-' + log.defense_level">
+          <div class="log-time">{{ formatTime(log.timestamp) }}</div>
+          <div class="log-content">
+            <el-tag size="small" type="danger">{{ log.attack_type }}</el-tag>
+            <el-tag size="small" :type="getLevelType(log.defense_level)">
+              等级 {{ log.defense_level }}
+            </el-tag>
+            <span class="log-action">{{ log.actions?.join(' → ') }}</span>
+          </div>
+          <!-- LLM生成的防御建议 -->
+          <div v-if="log.mitre_tactic || log.recommendations?.length" class="log-llm-suggestion">
+            <div class="llm-header">
+              <el-tag size="small" type="warning">🤖 AI防御建议</el-tag>
+              <span v-if="log.mitre_tactic" class="mitre-tag">{{ log.mitre_tactic }}/{{ log.mitre_technique }}</span>
+            </div>
+            <div v-if="log.impact_assessment" class="impact-text">
+              <strong>影响评估：</strong>{{ log.impact_assessment }}
+            </div>
+            <div v-if="log.recommendations?.length" class="recommendations">
+              <strong>处置建议：</strong>
+              <ul>
+                <li v-for="(rec, idx) in log.recommendations" :key="idx">{{ rec }}</li>
+              </ul>
+            </div>
+            <div v-if="log.rule_suggestions?.length" class="rule-suggestions">
+              <strong>规则建议：</strong>
+              <code v-for="(rule, idx) in log.rule_suggestions" :key="idx">{{ rule }}</code>
+            </div>
+          </div>
+        </div>
+        <div v-if="!defenseLogs.length" class="empty-tip">暂无防御日志，执行攻击后将自动记录</div>
+      </div>
+      <div v-if="defenseTotal > defensePageSize" style="margin-top: 12px; display: flex; justify-content: flex-end;">
+        <el-pagination
+          v-model:current-page="defensePage"
+          :page-size="defensePageSize"
+          :total="defenseTotal"
+          layout="total, prev, pager, next"
+          small
+          @current-change="loadDefenseLogs"
+        />
+      </div>
     </el-card>
 
-    <!-- 防御规则管理（从数据库加载，在攻防演练中实际生效） -->
+    <!-- 防御规则管理（第二行） -->
     <el-card class="tech-card" style="margin-top: 16px;">
       <template #header>
         <div class="card-header">
@@ -91,39 +126,24 @@
       </div>
     </el-card>
 
-    <!-- 防御日志 -->
+    <!-- 防御策略表/阶段说明（第三行） -->
     <el-card class="tech-card" style="margin-top: 16px;">
       <template #header>
         <div class="card-header">
           <span><el-icon>
-              <Document />
-            </el-icon> 防御执行日志（共 {{ defenseTotal }} 条）</span>
-          <el-button size="small" @click="loadDefenseLogs(1)">刷新</el-button>
+              <List />
+            </el-icon> 自适应防御策略</span>
+          <span class="tip">攻击强度越高、轮次越多 → 防御等级越高</span>
         </div>
       </template>
-      <div class="log-list">
-        <div v-for="log in defenseLogs" :key="log.timestamp" class="log-item" :class="'level-' + log.defense_level">
-          <div class="log-time">{{ formatTime(log.timestamp) }}</div>
-          <div class="log-content">
-            <el-tag size="small" type="danger">{{ log.attack_type }}</el-tag>
-            <el-tag size="small" :type="getLevelType(log.defense_level)">
-              等级 {{ log.defense_level }}
-            </el-tag>
-            <span class="log-action">{{ log.actions?.join(' → ') }}</span>
-          </div>
-        </div>
-        <div v-if="!defenseLogs.length" class="empty-tip">暂无防御日志，执行攻击后将自动记录</div>
-      </div>
-      <div v-if="defenseTotal > defensePageSize" style="margin-top: 12px; display: flex; justify-content: flex-end;">
-        <el-pagination
-          v-model:current-page="defensePage"
-          :page-size="defensePageSize"
-          :total="defenseTotal"
-          layout="total, prev, pager, next"
-          small
-          @current-change="loadDefenseLogs"
-        />
-      </div>
+      <el-table :data="defenseTableData" stripe size="small">
+        <el-table-column prop="attack_type" label="攻击类型" width="120" />
+        <el-table-column prop="level_1" label="轻度防御(强度1-2)" />
+        <el-table-column prop="level_2" label="基础防御(强度3-4)" />
+        <el-table-column prop="level_3" label="中级防御(强度5-6)" />
+        <el-table-column prop="level_4" label="高级防御(强度7-8)" />
+        <el-table-column prop="level_5" label="极致防御(强度9-10)" />
+      </el-table>
     </el-card>
 
     <!-- 活跃封禁 -->
@@ -360,5 +380,56 @@ onUnmounted(() => {
   text-align: center;
   padding: 40px;
   color: var(--text-muted);
+}
+
+/* LLM防御建议样式 */
+.log-llm-suggestion {
+  margin-top: 8px;
+  padding: 10px;
+  background: rgba(255, 193, 7, 0.1);
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.llm-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.mitre-tag {
+  font-family: monospace;
+  color: #909399;
+  font-size: 11px;
+}
+
+.impact-text {
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+
+.recommendations ul {
+  margin: 4px 0;
+  padding-left: 20px;
+}
+
+.recommendations li {
+  color: var(--text-secondary);
+  margin: 2px 0;
+}
+
+.rule-suggestions {
+  margin-top: 6px;
+}
+
+.rule-suggestions code {
+  display: block;
+  margin: 4px 0;
+  padding: 4px 8px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+  font-size: 11px;
+  color: #67c23a;
 }
 </style>

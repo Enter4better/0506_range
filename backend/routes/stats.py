@@ -230,7 +230,7 @@ def get_stats_overview():
                 stats['today_attacks'] = result[0] if result else 0
 
                 cursor.execute(
-                    "SELECT COUNT(*) FROM attacks WHERE DATE(created_at) = ? AND status = 'blocked'",
+                    "SELECT COUNT(*) FROM attacks WHERE DATE(created_at) = ? AND status = 'failed'",
                     (today,)
                 )
                 result = cursor.fetchone()
@@ -256,10 +256,13 @@ def get_stats_overview():
             attack_stats = Attack.get_stats()
             defense_stats = Defense.get_stats()
             
-            # 基于攻击成功率和防御覆盖率计算健康度
+            # 基于攻击成功(completed)和失败(failed)计算健康度
             total_attacks = attack_stats.get('total', 0)
+            status_counts = attack_stats.get('status_counts', {})
+            attack_success_count = status_counts.get('completed', 0)
+            attack_fail_count = status_counts.get('failed', 0)
             if total_attacks > 0:
-                attack_success_rate = attack_stats.get('success', 0) / total_attacks
+                attack_success_rate = attack_success_count / total_attacks
             else:
                 attack_success_rate = 0
             
@@ -313,16 +316,16 @@ def get_stats_overview():
                     attack_count = result[0] if result else 0
                     
                     cursor.execute(
-                        "SELECT COUNT(*) FROM attacks WHERE DATE(created_at) = ? AND status = 'blocked'",
+                        "SELECT COUNT(*) FROM attacks WHERE DATE(created_at) = ? AND status = 'failed'",
                         (date,)
                     )
                     result = cursor.fetchone()
                     blocked_count = result[0] if result else 0
-                    
+
                     attack_trend.append({
                         'date': date,
                         'attacks': attack_count,
-                        'blocked': blocked_count
+                        'blocked': blocked_count  # 语义：被防御拦截=失败
                     })
                 conn.close()
         except Exception as e:
