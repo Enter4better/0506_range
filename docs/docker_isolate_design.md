@@ -172,9 +172,87 @@ defense_result = defense_agent.detect_and_respond(
 
 ---
 
-## 6. 验证方法
+## 6. 触发条件详解
 
-### 6.1 功能验证（需 Docker 运行中且有 running 状态的靶场容器）
+### 6.1 触发门槛计算
+
+防御等级由攻击阶段基础值加强度加成共同决定，只要最终等级 ≥ 4 即触发 Docker 隔离：
+
+| 攻击阶段 | 基础防御等级 | 强度 <5 | 强度 5–7 | 强度 ≥8 |
+|---|---|---|---|---|
+| 1 侦察 | 1 | 1 | 2 | 3 |
+| 2 武器化与投递 | 2 | 2 | 3 | **4 ← 触发** |
+| 3 漏洞利用 | 3 | 3 | **4 ← 触发** | **5** |
+| 4 持久化与提权 | 4 | **4 ← 触发** | **5** | **5** |
+| 5 横向移动 | 5 | **5** | **5** | **5** |
+| 6 目标行动 | 5 | **5** | **5** | **5** |
+
+强度加成规则（`defense_agent.py:125`）：强度 < 5 加 0，强度 5–7 加 1，强度 ≥ 8 加 2，上限 5。
+
+### 6.2 触发后的三个可见位置
+
+**位置 1：攻击结果 `actions_taken` 字段（最直接）**
+
+前端攻击面板轮询 `GET /api/attack/result/<id>`，返回的 `defense.actions_taken` 数组中会包含：
+
+```
+🔒 容器网络已隔离: cyber_range_web-server_20260513_171050 （port=80，60s 后自动恢复）
+```
+
+Docker 不可用或找不到对应容器时降级为：
+
+```
+🔒 IP封禁记录: 192.168.1.xxx（未找到 container_port=80 对应的运行中靶场容器）
+```
+
+**位置 2：`GET /api/defense/blocked` 接口**
+
+触发后 60 秒内调用，可查询当前处于隔离状态的所有容器：
+
+```bash
+curl http://localhost:5001/api/defense/blocked
+```
+
+```json
+{
+  "status": "success",
+  "count": 1,
+  "blocked": [
+    {
+      "container_name": "cyber_range_web-server_20260513_171050",
+      "networks": ["bridge"],
+      "blocked_at": "2026-05-20T14:30:00.123456",
+      "port": 80,
+      "attack_type": "SQL注入"
+    }
+  ]
+}
+```
+
+**位置 3：Docker 本身**
+
+```bash
+docker inspect <container_name> --format '{{json .NetworkSettings.Networks}}'
+# 隔离期间：{} （空，网络已断开）
+# 60s 后恢复：{"bridge": {...}}
+```
+
+### 6.3 "IP封禁"与"容器隔离"的区别
+
+系统中存在两个概念，需区分：
+
+| 概念 | 实现方式 | 是否真实 |
+|---|---|---|
+| IP 封禁 | 将随机生成的 `192.168.1.x` 写入 `session['blocked_ips']` 内存列表 | **仅仿真**，无实际网络效果 |
+| 容器网络隔离 | 通过 Docker SDK 断开容器的所有 bridge 网络 | **真实 Docker 操作**，可通过 `docker inspect` 验证 |
+
+`source_ip` 是攻击仿真层随机生成的假 IP（`attacks.py:73`），不对应任何真实主机，因此"IP封禁"仅作为演练日志展示用。真正产生网络层效果的是容器隔离操作。
+
+---
+
+## 7. 验证方法
+
+### 7.1 功能验证（需 Docker 运行中且有 running 状态的靶场容器）
 
 1. 部署一个靶场（例如含 nginx:alpine，container_port=80）
 2. 创建一个攻击任务，port 设为 80，intensity 设为 8 以上
@@ -189,7 +267,7 @@ defense_result = defense_agent.detect_and_respond(
 5. 调用 Docker Desktop 或 `docker inspect <container_name>`，确认 `Networks` 为空
 6. 60s 后再次 inspect，确认网络已恢复
 
-### 6.2 降级验证（模拟 Docker 不可用）
+### 7.2 降级验证（模拟 Docker 不可用）
 
 停止 Docker Desktop，重新发起攻击，防御面板应显示：
 ```
