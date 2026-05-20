@@ -314,3 +314,55 @@ def get_alert_by_id(alert_id):
     except Exception as e:
         current_app.logger.error(f"获取警报详情失败: {e}")
         return jsonify({'status': 'error', 'msg': str(e)}), 500
+
+
+# ---------------------------------------------------------------------------
+# Docker 容器网络隔离接口
+# ---------------------------------------------------------------------------
+
+@defenses_bp.route('/blocked', methods=['GET'])
+def get_blocked_containers():
+    """查询当前处于网络隔离状态的靶场容器列表。
+
+    返回示例:
+    {
+      "status": "success",
+      "blocked": [
+        {
+          "container_name": "cyber_range_web-server_20260513_171050",
+          "networks": ["bridge"],
+          "blocked_at": "2026-05-20T14:30:00",
+          "port": 80,
+          "attack_type": "SQL注入"
+        }
+      ],
+      "count": 1
+    }
+    """
+    try:
+        from services.docker_isolate import get_blocked_containers
+        blocked = get_blocked_containers()
+        return jsonify({'status': 'success', 'blocked': blocked, 'count': len(blocked)}), 200
+    except Exception as e:
+        current_app.logger.error(f"获取隔离容器列表失败: {e}")
+        return jsonify({'status': 'error', 'msg': str(e)}), 500
+
+
+@defenses_bp.route('/unblock/<container_name>', methods=['POST'])
+def unblock_container(container_name):
+    """手动解除指定容器的网络隔离，提前恢复网络连接。
+
+    路径参数:
+        container_name: 容器名称（与 /blocked 接口返回的 container_name 一致）
+    """
+    try:
+        from services.docker_isolate import unblock_container as do_unblock
+        result = do_unblock(container_name)
+        if result['success']:
+            Log.create('info', 'defense', f'手动解除容器隔离: {container_name}')
+            return jsonify({'status': 'success', 'message': result['message']}), 200
+        else:
+            return jsonify({'status': 'error', 'msg': result['message']}), 400
+    except Exception as e:
+        current_app.logger.error(f"手动解封失败 container={container_name}: {e}")
+        return jsonify({'status': 'error', 'msg': str(e)}), 500

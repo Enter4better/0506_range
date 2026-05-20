@@ -161,12 +161,14 @@ class DefenseAgent(BaseAgent):
         rule_boost = min(rule_boost, 0.40)  # 规则加成最多 40%
         final_intercept_rate = min(0.95, intercept_rate + rule_boost)
         
-        # 执行防御动作
+        # 执行防御动作（传入 attack_port 供 Docker 隔离定位容器）
+        attack_port = int(attack_data.get('port', 80) or 80)
         actions = self._execute_defense_actions(
             attack_type=attack_type,
             defense_level=current_level,
             source_ip=source_ip,
-            session=session
+            session=session,
+            attack_port=attack_port
         )
         
         # 如果有匹配的规则，在动作中显示
@@ -242,35 +244,58 @@ class DefenseAgent(BaseAgent):
             'rule_suggestions': defense_suggestion.get('rule_suggestions', [])
         }
     
-    def _execute_defense_actions(self, attack_type: str, defense_level: int, 
-                                  source_ip: str, session: Dict) -> List[str]:
-        """根据防御等级执行具体动作"""
+    def _execute_defense_actions(self, attack_type: str, defense_level: int,
+                                  source_ip: str, session: Dict,
+                                  attack_port: int = 80) -> List[str]:
+        """根据防御等级执行具体动作。
+        level>=4 时调用 docker_isolate 真实断开靶场容器网络；
+        Docker 不可用时自动降级为文本记录。
+        """
         actions = []
-        
+
         # 等级1: 监控
         if defense_level >= 1:
             actions.append(f"📝 监控记录: {attack_type}攻击已记录")
-        
+
         # 等级2: 过滤
         if defense_level >= 2:
             actions.append(f"🛡️ 请求过滤: 对{attack_type}启用基础过滤")
-        
+
         # 等级3: 阻断
         if defense_level >= 3:
             actions.append(f"⚡ 主动阻断: {attack_type}请求已被拦截")
-        
-        # 等级4: 封禁IP
+
+        # 等级4: 封禁 —— 真实 Docker 网络隔离
         if defense_level >= 4:
             if source_ip not in session['blocked_ips']:
                 session['blocked_ips'].append(source_ip)
-                actions.append(f"🔒 IP封禁: {source_ip}已加入黑名单")
-            actions.append(f"🚨 服务隔离: 目标服务已隔离")
-        
+
+            # 尝试真实隔离对应靶场容器
+            try:
+                from services.docker_isolate import block_container_by_port, AUTO_UNBLOCK_SECONDS
+                iso_result = block_container_by_port(attack_port, attack_type)
+                if iso_result['success']:
+                    cname = iso_result['container_name']
+                    actions.append(
+                        f"🔒 容器网络已隔离: {cname} "
+                        f"（port={attack_port}，{AUTO_UNBLOCK_SECONDS}s 后自动恢复）"
+                    )
+                    logger.info(f"[DefenseAgent] Docker 隔离成功: {cname}")
+                else:
+                    # 降级：Docker 不可用或找不到容器，回退文本记录
+                    actions.append(f"🔒 IP封禁记录: {source_ip}（{iso_result['message']}）")
+                    logger.warning(f"[DefenseAgent] Docker 隔离降级: {iso_result['message']}")
+            except Exception as e:
+                actions.append(f"🔒 IP封禁记录: {source_ip}（隔离异常: {e}）")
+                logger.error(f"[DefenseAgent] Docker 隔离异常: {e}")
+
+            actions.append("🚨 服务隔离: 目标服务已隔离")
+
         # 等级5: 极限防护
         if defense_level >= 5:
-            actions.append(f"💀 极限防护: 全链路防御已启动")
-            actions.append(f"🔔 紧急告警: 高危攻击已上报")
-        
+            actions.append("💀 极限防护: 全链路防御已启动")
+            actions.append("🔔 紧急告警: 高危攻击已上报")
+
         return actions
 
     def _generate_defense_suggestion(self, attack_type: str, attack_phase: int,

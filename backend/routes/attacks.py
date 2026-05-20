@@ -58,6 +58,12 @@ def _execute_dynamic_attack_async(attack_id: str, attack: Attack, session_id: st
         attack_success = attack_result.get('status') == 'success'
 
         # 调用defense_agent进行自适应防御（根据攻击阶段自动升级）
+        # port 字段传给 docker_isolate 以精准定位靶场容器
+        try:
+            attack_port = int(attack.port) if attack.port else 80
+        except (ValueError, TypeError):
+            attack_port = 80
+
         defense_result = defense_agent.detect_and_respond(
             session_id=session_id,
             attack_data={
@@ -66,6 +72,7 @@ def _execute_dynamic_attack_async(attack_id: str, attack: Attack, session_id: st
                 'intensity': attack.intensity,
                 'source_ip': f'192.168.1.{random.randint(1, 255)}',
                 'target': attack.target,
+                'port': attack_port,
                 'payload': attack_result.get('ai_analysis', '')
             }
         )
