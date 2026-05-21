@@ -416,7 +416,8 @@ def get_target_network_and_ip(container_port: int) -> Tuple[Optional[str], Optio
             try:
                 from pathlib import Path
                 import sqlite3, json
-                db_path = Path(__file__).parent.parent / 'data' / 'ai_security_range.db'
+                from config import DB_CONFIG
+                db_path = DB_CONFIG.get('path', str(Path(__file__).parent.parent / 'data' / 'ai_security_range.db'))
                 conn = sqlite3.connect(str(db_path))
                 conn.row_factory = sqlite3.Row
                 cur = conn.cursor()
@@ -473,7 +474,8 @@ def _check_all_probes_failed(data: dict) -> bool:
         err = obj.get('error') or ''
         return any(kw.lower() in err.lower() for kw in CONN_ERROR_KEYWORDS)
 
-    results = data.get('results') or data.get('probed') or data.get('discovered')
+    results = (data.get('results') or data.get('probed') or
+               data.get('discovered') or data.get('found') or data.get('hits'))
     if not results:
         return False
 
