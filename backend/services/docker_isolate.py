@@ -205,25 +205,54 @@ def _find_container_name_by_port(container_port: int) -> Optional[str]:
     匹配逻辑：Target.config JSON 中 host_port 或 container_port 字段与参数相等。
     同时匹配 host_port 的原因：前端传递的端口号通常是主机端口（如 8080），
     而 config 中 container_port 是容器内部端口（如 80），两者都需要支持。
+
+    优先级规则（解决多个容器共享同一 container_port 的问题）：
+    1. 有真实 host_port 映射的容器优先（说明真正暴露到宿主机）
+    2. 其次按 id 顺序
+    3. 同时验证容器仍在 Docker 中实际运行（防止残留记录）
     """
+    client = _get_docker_client()
     try:
         db_path = Path(__file__).parent.parent / 'data' / 'ai_security_range.db'
         import sqlite3
         conn = sqlite3.connect(str(db_path))
         conn.row_factory = sqlite3.Row
         cur = conn.cursor()
-        cur.execute("SELECT name, config FROM targets WHERE status = 'running'")
+        cur.execute("SELECT target_id, name, config FROM targets WHERE status = 'running'")
         rows = cur.fetchall()
         conn.close()
 
+        candidates = []
         for row in rows:
             try:
                 cfg = json.loads(row['config'] or '{}')
                 if cfg.get('container_port') == container_port or cfg.get('host_port') == container_port:
-                    # 优先用 config 里的 container_name，其次用 targets.name
-                    return cfg.get('container_name') or row['name']
+                    candidates.append({'target_id': row['target_id'], 'config': cfg})
             except (json.JSONDecodeError, TypeError):
                 continue
+
+        if not candidates:
+            return None
+
+        # 优先：有真实 host_port 的容器（映射到宿主机端口的才是用户真正使用的）
+        with_host_port = [c for c in candidates if c['config'].get('host_port') is not None]
+        if with_host_port:
+            candidates = with_host_port
+
+        # 逐一验证容器在 Docker 中实际存在且运行中
+        for candidate in candidates:
+            cname = candidate['config'].get('container_name') or candidate['name']
+            try:
+                if client:
+                    docker_c = client.containers.get(cname)
+                    docker_c.reload()
+                    if docker_c.status == 'running':
+                        return cname
+            except Exception:
+                pass
+
+        # 兜底：直接用第一个候选（数据库记录中最近的）
+        return candidates[0]['config'].get('container_name') or candidates[0]['name']
 
     except Exception as e:
         logger.warning(f"[DockerIsolate] 数据库查询失败: {e}")

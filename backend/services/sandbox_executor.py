@@ -345,10 +345,26 @@ def run_sandbox_attack(attack_type: str, target_host: str, target_port: int,
         raw = container.logs(stdout=True, stderr=True).decode('utf-8', errors='replace').strip()
         container.remove(force=True)
 
-        # 尝试美化 JSON 输出
+        # 尝试解析 JSON 并检查是否所有探测都连接失败
         try:
             data = json.loads(raw)
             output = json.dumps(data, ensure_ascii=False, indent=2)
+
+            # 检测"全连接失败"：所有探测结果都是 Connection refused
+            # 这种情况说明靶场没有 HTTP 服务，沙箱攻击实际未成功
+            all_failed = _check_all_probes_failed(data)
+            if all_failed:
+                logger.warning(f"[SandboxExecutor] 靶场无响应: {attack_type} → {target_host}:{target_port}")
+                return {
+                    'success': False,
+                    'output': (
+                        f"靶场容器 {target_host}:{target_port} 无 HTTP 服务响应，"
+                        f"攻击未执行。建议：确认靶场已启动且端口映射正确，或该靶场不支持此类攻击。"
+                        f"\n\n--- 沙箱原始输出 ---\n{output}"
+                    ),
+                    'attack_type': attack_type,
+                    'real': True
+                }
         except (json.JSONDecodeError, ValueError):
             output = raw
 
@@ -441,3 +457,29 @@ def _get_docker_client():
     except Exception as e:
         logger.warning(f"[SandboxExecutor] Docker 初始化失败: {e}")
         return None
+
+
+def _check_all_probes_failed(data: dict) -> bool:
+    """
+    检测沙箱输出 JSON 中是否所有探测都连接失败（靶场无 HTTP 服务）。
+
+    判断逻辑：检查每个攻击脚本的结果列表，如果所有条目的 error 字段都包含
+    'Connection refused' / 'ConnectionRefusedError' / 'ECONNREFUSED'，则判定为全失败。
+    至少有一条有效响应（status >= 200 或有真实 sql_error_hint / reflected 等）则不算失败。
+    """
+    CONN_ERROR_KEYWORDS = ('Connection refused', 'ConnectionRefusedError', 'ECONNREFUSED', 'errno 111')
+
+    def is_conn_error(obj) -> bool:
+        err = obj.get('error') or ''
+        return any(kw.lower() in err.lower() for kw in CONN_ERROR_KEYWORDS)
+
+    results = data.get('results') or data.get('probed') or data.get('discovered')
+    if not results:
+        return False
+
+    # 至少有一条非连接错误的结果（有效探测）→ 不是全失败
+    if any(not is_conn_error(r) for r in results):
+        return False
+
+    # 所有条目都是连接错误 → 判定为全失败
+    return True
