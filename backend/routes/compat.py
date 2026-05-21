@@ -483,7 +483,7 @@ def compat_env_create():
         if not client:
             return jsonify({'status': 'error', 'msg': '无法连接到Docker服务，请确保Docker Desktop已启动'}), 503
         
-        port_bindings = {f'{container_port}/tcp': ('127.0.0.1', host_port)}
+        port_bindings = {f'{container_port}/tcp': ('0.0.0.0', host_port)}
         
         cmd = _IMAGE_REQUIRED_COMMANDS.get(image)
         req_env = _IMAGE_REQUIRED_ENVS.get(image, {})
@@ -726,9 +726,7 @@ def compat_env_start(target_id):
                     if not host_port:
                         return jsonify({'status': 'error', 'msg': '无法找到可用端口'}), 500
                 
-                port_bindings = {f'{container_port}/tcp': ('127.0.0.1', host_port)}
-                
-                required_cmd = _IMAGE_REQUIRED_COMMANDS.get(image)
+                port_bindings = {f'{container_port}/tcp': ('0.0.0.0', host_port)}
                 new_container = client.containers.run(
                     image,
                     name=recreate_name,
@@ -796,7 +794,7 @@ def compat_env_start(target_id):
                     required_cmd = _IMAGE_REQUIRED_COMMANDS.get(image)
                     new_container = docker_client.containers.run(
                         image, name=old_name, detach=True,
-                        ports={f'{container_port}/tcp': ('127.0.0.1', new_host_port)},
+                        ports={f'{container_port}/tcp': ('0.0.0.0', new_host_port)},
                         remove=False,
                         command=required_cmd
                     )

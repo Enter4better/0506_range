@@ -72,7 +72,9 @@
               </el-col>
               <el-col :span="8">
                 <el-form-item label="端口">
-                  <el-input v-model="form.port" placeholder="8080">
+                  <el-input v-model="form.port" placeholder="8080"
+                    :readonly="!!selectedTargetPorts"
+                    :style="selectedTargetPorts ? { backgroundColor: 'var(--bg-input-disabled)', cursor: 'not-allowed' } : {}">
                     <template #prefix>
                       <el-icon>
                         <Connection />
@@ -100,6 +102,18 @@
                   {{ v }}{{ form.type === v ? ' ✓' : '' }}
                 </el-tag>
               </div>
+            </el-form-item>
+
+            <!-- 端口自动填充提示 -->
+            <el-form-item v-if="selectedTargetPorts" label=" ">
+              <span style="font-size: 12px; color: var(--text-muted);">
+                <el-icon><InfoFilled /></el-icon> 端口由靶场自动填充（选择靶场后固定），如需更换靶场请先清除选择
+              </span>
+            </el-form-item>
+
+            <!-- 沙箱模式端口不兼容警告 -->
+            <el-form-item v-if="sandboxCompatWarn" label=" ">
+              <el-alert :title="sandboxCompatWarn" type="warning" :closable="false" show-icon />
             </el-form-item>
 
             <el-form-item label="攻击强度">
@@ -316,11 +330,37 @@
       />
     </el-card>
 
-    <!-- 选择靶场对话框：点击行高亮，Enter 确认选中 -->
-    <el-dialog v-model="targetDialogVisible" title="选择靶场（点击行高亮后按 Enter 确认）" width="1200px" class="tech-dialog"
+    <!-- 选择靶场对话框 -->
+    <el-dialog v-model="targetDialogVisible" title="选择靶场（Enter 确认选中行）" width="1200px" class="tech-dialog"
       @keyup.enter="tableCurrentRow ? selectTargetConfirm(tableCurrentRow) : undefined">
-      <el-table :data="targets" stripe style="width: 100%;" size="small" v-loading="loadingTargets" max-height="380"
+      <!-- 沙箱过滤提示 -->
+      <el-alert v-if="sandboxMode && form.type && incompatibleTargets.length > 0"
+        title="沙箱模式：已自动过滤不兼容靶场"
+        type="info" :closable="false" show-icon style="margin-bottom: 8px;">
+        <template #default>
+          当前攻击类型 <el-tag size="small" type="warning">{{ form.type }}</el-tag> 需要靶场具备 Web 服务，
+          已隐藏 {{ incompatibleTargets.length }} 个不兼容靶场
+          <el-button text size="small" type="primary" @click="showIncompatibleTargets = !showIncompatibleTargets">
+            {{ showIncompatibleTargets ? '隐藏不兼容' : '显示全部' }}
+          </el-button>
+        </template>
+      </el-alert>
+      <el-alert v-if="sandboxMode && form.type && incompatibleTargets.length > 0 && targets.length === 0 && !loadingTargets"
+        title="无兼容靶场" type="warning" :closable="false" show-icon style="margin-bottom: 8px;">
+        <template #default>
+          请先在「环境管理」中创建综合漏洞靶场（DVWA/WebGoat/Juice Shop）或启动 Web 服务容器
+        </template>
+      </el-alert>
+      <el-table :data="displayTargets" stripe style="width: 100%;" size="small" v-loading="loadingTargets" max-height="380"
         highlight-current-row @current-change="(row) => tableCurrentRow = row" @row-dblclick="selectTargetConfirm">
+        <el-table-column v-if="sandboxMode && form.type" label="兼容" width="70" align="center">
+          <template #default="{ row }">
+            <el-tooltip :content="getTargetCompatTooltip(row)" placement="right">
+              <el-icon v-if="getTargetCompatCheck(row)" style="color: #67c23a;"><CircleCheck /></el-icon>
+              <el-icon v-else style="color: #f56c6c;"><WarningFilled /></el-icon>
+            </el-tooltip>
+          </template>
+        </el-table-column>
         <el-table-column prop="name" label="名称" min-width="160" show-overflow-tooltip>
           <template #default="{ row }">
             <span style="color: var(--cyan); font-weight: 500;">{{ row.name }}</span>
@@ -390,17 +430,17 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
 
 import { ElMessage } from 'element-plus'
 import {
   Aim, Setting, Edit, Location, Connection,
   MagicStick, Position, List, SuccessFilled,
   Refresh, CopyDocument, Close, Monitor, Document, DataLine,
-  Loading, Warning
+  Loading, Warning, CircleCheck, WarningFilled, InfoFilled
 } from '@element-plus/icons-vue'
 import request from '@/utils/request'
-import { getTargetMeta } from '@/utils/targetMeta'
+import { getTargetMeta, isSandboxCompatible, filterSandboxTargets, attackNeedsHttp, SANDBOX_ATTACK_TYPES, isPortCompatible, extractHostPort } from '@/utils/targetMeta'
 
 // 组件
 import StatCard from '@/components/StatCard.vue'
@@ -416,9 +456,13 @@ const resultType = ref('info')
 const resultStatus = ref('')
 const targetDialogVisible = ref(false)
 const targets = ref([])
+const incompatibleTargets = ref([])       // 沙箱不兼容的靶场
+const showIncompatibleTargets = ref(false) // 是否显示不兼容靶场
+const sandboxCompatWarn = ref('')         // 沙箱兼容性警告信息
 const selectedTargetStatus = ref(null)
 const selectedTargetImage = ref('')
 const selectedTargetMeta = ref(null)
+const selectedTargetPorts = ref('')   // 选中靶场的端口字段（如 "80:80"），用于端口自动填充和校验
 const attackLogs = ref([])
 const attackLogPage = ref(1)
 const attackLogPageSize = ref(10)
@@ -540,6 +584,14 @@ const intensityPreview = computed(() => {
   return { successRate, blockRate, defenseSpeed, defenseTagType, description, successColor, blockColor }
 })
 
+// 沙箱模式：靶场列表展示（按 showIncompatibleTargets 决定是否合并不兼容靶场）
+const displayTargets = computed(() => {
+  if (showIncompatibleTargets.value && incompatibleTargets.value.length > 0) {
+    return [...targets.value, ...incompatibleTargets.value]
+  }
+  return targets.value
+})
+
 // 工具函数
 function getAttackTypeTag(type) {
 
@@ -558,8 +610,41 @@ function getIntensityType(val) {
   return 'danger'
 }
 
+// 沙箱靶场兼容性辅助函数（对话框表格用）
+function getTargetCompatCheck(target) {
+  if (!sandboxMode.value || !form.value.type) return true
+  return isSandboxCompatible(form.value.type, target.image).compatible
+}
+
+function getTargetCompatTooltip(target) {
+  if (!sandboxMode.value || !form.value.type) return ''
+  const result = isSandboxCompatible(form.value.type, target.image)
+  return result.compatible ? '✓ ' + result.reason : '✗ ' + result.reason
+}
+
 function onAttackTypeChange(type, port) {
   form.value.port = port
+  // 沙箱模式：攻击类型变了，重置兼容性状态
+  if (sandboxMode.value) {
+    sandboxCompatWarn.value = ''
+    // 如果新选择的攻击类型不在沙箱支持列表中，自动关闭沙箱
+    if (type && !SANDBOX_ATTACK_TYPES.includes(type)) {
+      sandboxMode.value = false
+      ElMessage.warning(`「${type}」暂不支持沙箱模式，已自动切换为仿真模式`)
+      return
+    }
+    // 如果当前选中的靶场不兼容，清除选择
+    if (selectedTargetImage.value && form.value.type) {
+      const compat = isSandboxCompatible(form.value.type, selectedTargetImage.value)
+      if (!compat.compatible) {
+        selectedTargetMeta.value = null
+        selectedTargetImage.value = ''
+        selectedTargetPorts.value = ''
+        selectedTargetStatus.value = null
+        sandboxCompatWarn.value = compat.reason
+      }
+    }
+  }
 }
 
 function resetForm() {
@@ -569,6 +654,11 @@ function resetForm() {
   sandboxOutput.value = ''
   sandboxIsReal.value = false
   sandboxPolling.value = false
+  sandboxCompatWarn.value = ''
+  selectedTargetMeta.value = null
+  selectedTargetImage.value = ''
+  selectedTargetPorts.value = ''
+  selectedTargetStatus.value = null
   if (sandboxTimer) { clearInterval(sandboxTimer); sandboxTimer = null }
 }
 
@@ -577,20 +667,33 @@ async function pollSandboxResult(attackId) {
   sandboxOutput.value = ''
   if (sandboxTimer) clearInterval(sandboxTimer)
   let tries = 0
+  const MAX_TRIES = 90  // 3 分钟（90 × 2s），足够 Docker 容器创建 + 脚本执行 + AI 分析
   sandboxTimer = setInterval(async () => {
     tries++
     try {
       const res = await request.get(`/attack/result/${attackId}`)
-      const out = res.result?.attack?.sandbox_output
+      // 优先从内存结果读取，回退到数据库中的 attack.result（异步任务完成后写入）
+      const memOut = res.result?.attack?.sandbox_output
+      const dbOut = res.attack?.result?.attack?.sandbox_output
+      const out = memOut || dbOut
       if (out) {
         sandboxOutput.value = out
-        sandboxIsReal.value = !!res.result?.attack?.sandbox_real
+        sandboxIsReal.value = !!(res.result?.attack?.sandbox_real || res.attack?.result?.attack?.sandbox_real)
         sandboxPolling.value = false
         clearInterval(sandboxTimer)
         sandboxTimer = null
+        return
+      }
+      // 如果攻击已结束但沙箱输出仍为空，再等几次后停止
+      const attackDone = res.attack?.status === 'completed' || res.attack?.status === 'failed'
+      if (attackDone && tries >= 10) {
+        sandboxPolling.value = false
+        clearInterval(sandboxTimer)
+        sandboxTimer = null
+        return
       }
     } catch (e) { /* ignore */ }
-    if (tries >= 20) {
+    if (tries >= MAX_TRIES) {
       sandboxPolling.value = false
       clearInterval(sandboxTimer)
       sandboxTimer = null
@@ -668,12 +771,34 @@ async function launch() {
     return
   }
 
-  // 检查靶场状态（如果是从弹窗选择的靶场）
-  if (selectedTargetStatus.value) {
-    if (selectedTargetStatus.value !== 'running') {
+  // 检查靶场状态（沙箱模式下严格要求运行中）
+  if (sandboxMode.value) {
+    // 未从弹窗选择靶场（手动输入地址），无法验证状态，提示用户确认
+    if (!selectedTargetStatus.value && !selectedTargetImage.value) {
+      // 不阻止，后端会做最终验证
+    } else if (selectedTargetStatus.value && selectedTargetStatus.value !== 'running') {
       ElMessage.warning('所选靶场已停止，请先启动靶场后再发起攻击')
       loading.value = false
       return
+    }
+  }
+
+  // 沙箱模式：校验攻击类型与靶场兼容性
+  if (sandboxMode.value && form.value.type) {
+    // 1) 攻击类型必须在沙箱支持列表中
+    if (!SANDBOX_ATTACK_TYPES.includes(form.value.type)) {
+      ElMessage.warning(`「${form.value.type}」暂不支持沙箱模式，请切换攻击类型或使用仿真模式`)
+      loading.value = false
+      return
+    }
+    // 2) 如果已选靶场，校验靶场兼容性
+    if (selectedTargetImage.value) {
+      const compat = isSandboxCompatible(form.value.type, selectedTargetImage.value)
+      if (!compat.compatible) {
+        ElMessage.warning(compat.reason)
+        loading.value = false
+        return
+      }
     }
   }
 
@@ -683,6 +808,7 @@ async function launch() {
   sandboxOutput.value = ''
   sandboxIsReal.value = false
   sandboxPolling.value = false
+  if (sandboxTimer) { clearInterval(sandboxTimer); sandboxTimer = null }
 
   try {
     const createRes = await request.post('/attack/create', {
@@ -771,35 +897,67 @@ async function loadStats() {
 async function selectTarget() {
   targetDialogVisible.value = true
   loadingTargets.value = true
+  showIncompatibleTargets.value = false
+  incompatibleTargets.value = []
+  sandboxCompatWarn.value = ''
   try {
     const res = await request.get('/env/list')
     if (res.status === 'success') {
-      // 格式化数据，确保所有字段都正确显示（与EnvManage.vue保持一致）
-      targets.value = (res.containers || res.data || []).map(t => ({
+      const allTargets = (res.containers || res.data || []).map(t => ({
         ...t,
         name: t.name || '未命名靶场',
         image: t.image || t.os || 'unknown',
         ports: t.ports || t.port || '-',
         created: t.created || t.created_at || '-'
       }))
+      // 沙箱模式 + 已选攻击类型 → 过滤不兼容靶场
+      if (sandboxMode.value && form.value.type) {
+        const filtered = filterSandboxTargets(allTargets, form.value.type)
+        targets.value = filtered.compatible
+        incompatibleTargets.value = filtered.incompatible
+        if (filtered.compatible.length === 0) {
+          sandboxCompatWarn.value = `沙箱模式下「${form.value.type}」需要 Web 服务靶场，当前无兼容靶场运行，请先在环境管理中创建综合靶场（DVWA/WebGoat/Juice Shop）或 Web 服务容器`
+        }
+      } else {
+        targets.value = allTargets
+      }
     }
   } catch (e) { ElMessage.error('获取靶场列表失败') }
   finally { loadingTargets.value = false }
 }
 
 function selectTargetConfirm(target) {
-  // 从端口映射中提取主机端口
-  if (target.ports && target.ports !== '-') {
-    const portStr = String(target.ports)
-    const portMatch = portStr.match(/(\d+)/)
-    if (portMatch) {
-      form.value.port = portMatch[1]
-    }
+  // 保存靶场端口字段，用于端口自动填充和校验
+  selectedTargetPorts.value = target.ports || ''
+
+  // 从端口映射中提取主机端口并自动填充（禁止手动修改）
+  const hostPort = extractHostPort(target.ports)
+  if (hostPort !== null) {
+    form.value.port = String(hostPort)
+  } else {
+    // 纯内网容器无端口映射，端口保持原值
+    form.value.port = form.value.port || ''
   }
   form.value.target = target.ip || 'localhost'
   selectedTargetStatus.value = target.status
   selectedTargetImage.value = target.image || ''
   selectedTargetMeta.value = getTargetMeta(target.image)
+
+  // 沙箱兼容性检查（靶场类型 + 端口双重校验）
+  if (sandboxMode.value && form.value.type) {
+    const compatType = isSandboxCompatible(form.value.type, target.image)
+    const compatPort = isPortCompatible(hostPort, target.image, target.ports, form.value.type)
+    if (!compatType.compatible) {
+      sandboxCompatWarn.value = compatType.reason
+      ElMessage.warning(compatType.reason)
+    } else if (!compatPort.compatible) {
+      sandboxCompatWarn.value = compatPort.reason
+      ElMessage.warning(compatPort.reason)
+    } else {
+      sandboxCompatWarn.value = ''
+    }
+  }
+
   targetDialogVisible.value = false
 
   const metaInfo = selectedTargetMeta.value ? ` (${selectedTargetMeta.value.label})` : ''
@@ -835,6 +993,37 @@ async function loadAttackTypes() {
     console.error('加载攻击类型失败', e)
   }
 }
+
+// 切换沙箱模式时重新校验靶场兼容性
+watch(sandboxMode, (on) => {
+  if (!on) {
+    sandboxCompatWarn.value = ''
+    incompatibleTargets.value = []
+    return
+  }
+  // 检查攻击类型是否在沙箱支持列表中
+  if (form.value.type && !SANDBOX_ATTACK_TYPES.includes(form.value.type)) {
+    sandboxCompatWarn.value = `「${form.value.type}」暂不支持沙箱模式，将自动降级为仿真模式执行`
+    return
+  }
+  // 沙箱模式开启，检查当前选中靶场（类型 + 端口双重校验）
+  if (form.value.type && selectedTargetImage.value) {
+    const compatType = isSandboxCompatible(form.value.type, selectedTargetImage.value)
+    const compatPort = isPortCompatible(
+      parseInt(form.value.port) || null,
+      selectedTargetImage.value,
+      selectedTargetPorts.value,
+      form.value.type
+    )
+    if (!compatType.compatible) {
+      sandboxCompatWarn.value = compatType.reason
+    } else if (!compatPort.compatible) {
+      sandboxCompatWarn.value = compatPort.reason
+    } else {
+      sandboxCompatWarn.value = ''
+    }
+  }
+})
 
 onMounted(() => {
   loadAttackTypes()

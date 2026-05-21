@@ -113,7 +113,9 @@ class AttackAgent(BaseAgent):
         target_meta = None
         try:
             from .env_agent import COMPREHENSIVE_TARGETS
-            target_meta = COMPREHENSIVE_TARGETS.get(target_image)
+            # Docker SDK 返回的镜像名可能带 :tag 后缀（如 :latest），需要归一化匹配
+            base_image = target_image.split(':')[0] if ':' in target_image else target_image
+            target_meta = COMPREHENSIVE_TARGETS.get(target_image) or COMPREHENSIVE_TARGETS.get(base_image)
         except Exception:
             pass
 
@@ -184,11 +186,13 @@ class AttackAgent(BaseAgent):
         """在真实 Docker 容器中执行攻击脚本，返回 (output_str, is_real)。"""
         try:
             from services.sandbox_executor import run_sandbox_attack, get_target_network_and_ip
-            target_ip, network = get_target_network_and_ip(target_port)
+            target_ip, network, internal_port = get_target_network_and_ip(target_port)
             if not target_ip:
-                logger.warning(f"[SandboxExecutor] 未找到 port={target_port} 对应的容器，降级为仿真")
-                return f'未找到 container_port={target_port} 对应的运行中靶场容器，降级为仿真模式', False
-            result = run_sandbox_attack(attack_type, target_ip, target_port, network)
+                logger.warning(f"[SandboxExecutor] 未找到 port={target_port} 对应的运行中靶场容器，降级为仿真")
+                return f'未找到 port={target_port} 对应的运行中靶场容器，降级为仿真模式', False
+            # 使用容器内部端口通信（Docker 内网中无需经过主机端口映射）
+            actual_port = internal_port if internal_port else target_port
+            result = run_sandbox_attack(attack_type, target_ip, actual_port, network)
             return result['output'], result['real']
         except Exception as e:
             logger.error(f"[SandboxExecutor] 调用失败: {e}")
@@ -315,8 +319,26 @@ class AttackAgent(BaseAgent):
             (f'searchsploit {attack_type}', '{attack_type} exploits...'),
         ]
 
-        # 获取该攻击类型对应的命令列表
-        candidates = TECH_COMMANDS.get(attack_type, DEFAULT_STEPS)
+        # 前端攻击类型名 → TECH_COMMANDS 键名映射
+        # 前端的 get_attack_types() 使用简化名称（如 SQL注入），
+        # 而 TECH_COMMANDS 使用 PHASE_ATTACKS 中的完整名称（如 SQL注入利用）
+        ATTACK_TYPE_ALIAS = {
+            'SQL注入': 'SQL注入利用',
+            '命令执行': 'RCE远程代码执行',
+            '反弹Shell': 'Web Shell上传',
+            '权限提升': '提权利用',
+            'CSRF攻击': '反序列化攻击',
+            '文件包含': 'Web Shell上传',
+            'XXE注入': '反序列化攻击',
+            '中间人攻击': 'C2通道建立',
+            '容器逃逸': '提权利用',
+            '数据外传': '敏感数据窃取',
+            '暴力破解': '凭证窃取',
+        }
+
+        # 获取该攻击类型对应的命令列表（先尝试别名映射）
+        lookup_type = ATTACK_TYPE_ALIAS.get(attack_type, attack_type)
+        candidates = TECH_COMMANDS.get(lookup_type, DEFAULT_STEPS)
         steps = []
 
         # 根据攻击是否成功选择展示几步

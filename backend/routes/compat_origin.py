@@ -148,7 +148,7 @@ def _create_container_direct(data):
             current_app.logger.error(f"Docker服务连接失败: {e}")
             return jsonify({'status': 'error', 'msg': '无法连接到Docker服务，请确保Docker Desktop已启动'}), 503
 
-        port_bindings = {f'{container_port}/tcp': ('127.0.0.1', host_port)}
+        port_bindings = {f'{container_port}/tcp': ('0.0.0.0', host_port)}
 
         container = docker_client.containers.run(
             image,
@@ -428,7 +428,7 @@ def compat_env_start(target_id):
                     real_name = config.get('container_name', f'target_{target_id}')
                     
                     docker_client = docker.from_env()
-                    port_bindings = {f'{container_port}/tcp': ('127.0.0.1', host_port)}
+                    port_bindings = {f'{container_port}/tcp': ('0.0.0.0', host_port)}
                     
                     new_container = docker_client.containers.run(
                         image, name=real_name, detach=True,

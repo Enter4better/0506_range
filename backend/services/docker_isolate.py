@@ -201,8 +201,10 @@ def _get_docker_client():
 
 def _find_container_name_by_port(container_port: int) -> Optional[str]:
     """
-    查询数据库，找到 container_port 匹配且状态为 running 的靶场容器名。
-    匹配逻辑：Target.config JSON 中 container_port 字段与参数相等。
+    查询数据库，找到 host_port 或 container_port 匹配且状态为 running 的靶场容器名。
+    匹配逻辑：Target.config JSON 中 host_port 或 container_port 字段与参数相等。
+    同时匹配 host_port 的原因：前端传递的端口号通常是主机端口（如 8080），
+    而 config 中 container_port 是容器内部端口（如 80），两者都需要支持。
     """
     try:
         db_path = Path(__file__).parent.parent / 'data' / 'ai_security_range.db'
@@ -217,7 +219,7 @@ def _find_container_name_by_port(container_port: int) -> Optional[str]:
         for row in rows:
             try:
                 cfg = json.loads(row['config'] or '{}')
-                if cfg.get('container_port') == container_port:
+                if cfg.get('container_port') == container_port or cfg.get('host_port') == container_port:
                     # 优先用 config 里的 container_name，其次用 targets.name
                     return cfg.get('container_name') or row['name']
             except (json.JSONDecodeError, TypeError):

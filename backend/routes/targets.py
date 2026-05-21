@@ -194,7 +194,7 @@ def create_target():
             for attempt_port in [host_port] + list(range(8100, 8950, 50)):
                 try:
                     docker_client = docker.from_env()
-                    port_bindings = {f'{container_port}/tcp': ('127.0.0.1', attempt_port)}
+                    port_bindings = {f'{container_port}/tcp': ('0.0.0.0', attempt_port)}
                     env_list = [e.strip() for e in env_vars.split(',')] if env_vars else None
                     
                     req_env = dict(_IMAGE_REQUIRED_ENVS.get(original_image, {}))
@@ -351,7 +351,7 @@ def start_target(container_id):
                     real_name = config.get('container_name', f'target_{container_id}')
                     
                     docker_client = docker.from_env()
-                    port_bindings = {f'{container_port}/tcp': ('127.0.0.1', host_port)}
+                    port_bindings = {f'{container_port}/tcp': ('0.0.0.0', host_port)}
                     
                     new_container = docker_client.containers.run(
                         image,
