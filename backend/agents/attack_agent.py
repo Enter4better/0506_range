@@ -89,7 +89,8 @@ class AttackAgent(BaseAgent):
         return round(success_rate, 3)
 
     def execute_attack(self, session_id: str, attack_type: str = None, intensity: int = 5,
-                       target_image: str = '') -> Dict:
+                       target_image: str = '', sandbox_mode: bool = False,
+                       target_port: int = 80) -> Dict:
         """执行攻击 - 自动管理阶段升级，对综合漏洞靶场应用成功率加成"""
         # 初始化会话数据
         if session_id not in self.session_data:
@@ -145,6 +146,12 @@ class AttackAgent(BaseAgent):
         ai_analysis = self._ai_analyze_attack(attack_type, success, intensity, current_phase,
                                               target_meta=target_meta, vuln_match=vuln_match)
 
+        # 沙箱模式：在真实容器中执行攻击脚本
+        sandbox_output = ''
+        sandbox_real = False
+        if sandbox_mode:
+            sandbox_output, sandbox_real = self._sandbox_execute(attack_type, target_port)
+
         result = {
             'status': 'success' if success else 'failed',
             'attack_type': attack_type,
@@ -157,6 +164,9 @@ class AttackAgent(BaseAgent):
             'vuln_match': vuln_match,
             'ai_analysis': ai_analysis,
             'steps': self._generate_attack_steps(attack_type, current_phase, success, intensity, target_meta),
+            'sandbox_mode': sandbox_mode,
+            'sandbox_output': sandbox_output,
+            'sandbox_real': sandbox_real,
             'executed_at': datetime.now().isoformat()
         }
 
@@ -169,7 +179,21 @@ class AttackAgent(BaseAgent):
                     f"(成功率={success_rate:.1%}) {match_info}")
 
         return result
-    
+
+    def _sandbox_execute(self, attack_type: str, target_port: int):
+        """在真实 Docker 容器中执行攻击脚本，返回 (output_str, is_real)。"""
+        try:
+            from services.sandbox_executor import run_sandbox_attack, get_target_network_and_ip
+            target_ip, network = get_target_network_and_ip(target_port)
+            if not target_ip:
+                logger.warning(f"[SandboxExecutor] 未找到 port={target_port} 对应的容器，降级为仿真")
+                return f'未找到 container_port={target_port} 对应的运行中靶场容器，降级为仿真模式', False
+            result = run_sandbox_attack(attack_type, target_ip, target_port, network)
+            return result['output'], result['real']
+        except Exception as e:
+            logger.error(f"[SandboxExecutor] 调用失败: {e}")
+            return f'沙箱执行异常: {e}', False
+
     def _generate_attack_steps(self, attack_type: str, phase: int, success: bool,
                                 intensity: int, target_meta: dict = None) -> list:
         """

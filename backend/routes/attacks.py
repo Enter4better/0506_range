@@ -35,7 +35,8 @@ exercise_sessions = {}
 sessions_lock = threading.Lock()
 
 
-def _execute_dynamic_attack_async(attack_id: str, attack: Attack, session_id: str, target_image: str = ''):
+def _execute_dynamic_attack_async(attack_id: str, attack: Attack, session_id: str,
+                                   target_image: str = '', sandbox_mode: bool = False):
     """异步执行动态攻防演练"""
     try:
         attack.update_status('running')
@@ -45,25 +46,27 @@ def _execute_dynamic_attack_async(attack_id: str, attack: Attack, session_id: st
         attack_agent = get_attack_agent()
         defense_agent = get_defense_agent()
 
-        # 使用attack_agent执行阶段化攻击（传入target_image以启用综合靶场加成）
+        # port 字段传给 sandbox_executor / docker_isolate 以定位靶场容器
+        try:
+            attack_port = int(attack.port) if attack.port else 80
+        except (ValueError, TypeError):
+            attack_port = 80
+
+        # 使用attack_agent执行阶段化攻击
         attack_result = attack_agent.execute_attack(
             session_id=session_id,
             attack_type=attack.attack_type,
             intensity=attack.intensity,
-            target_image=target_image
+            target_image=target_image,
+            sandbox_mode=sandbox_mode,
+            target_port=attack_port
         )
 
         # 获取攻击阶段信息
         attack_phase = attack_result.get('attack_phase', 1)
         attack_success = attack_result.get('status') == 'success'
 
-        # 调用defense_agent进行自适应防御（根据攻击阶段自动升级）
-        # port 字段传给 docker_isolate 以精准定位靶场容器
-        try:
-            attack_port = int(attack.port) if attack.port else 80
-        except (ValueError, TypeError):
-            attack_port = 80
-
+        # 调用defense_agent进行自适应防御
         defense_result = defense_agent.detect_and_respond(
             session_id=session_id,
             attack_data={
@@ -106,6 +109,9 @@ def _execute_dynamic_attack_async(attack_id: str, attack: Attack, session_id: st
                 'intensity': attack.intensity,
                 'ai_analysis': attack_result.get('ai_analysis', ''),
                 'steps': attack_result.get('steps', []),
+                'sandbox_mode': sandbox_mode,
+                'sandbox_output': attack_result.get('sandbox_output', ''),
+                'sandbox_real': attack_result.get('sandbox_real', False),
                 'executed_at': attack_result.get('executed_at', '')
             },
             'defense': {
@@ -229,9 +235,10 @@ def execute_attack(attack_id):
         if attack.status != 'pending':
             return jsonify({'status': 'error', 'msg': '攻击任务状态不正确'}), 400
 
-        # 从请求体读取靶场镜像（可选，用于综合靶场成功率加成）
+        # 从请求体读取靶场镜像和沙箱模式标志
         req_data = request.get_json(silent=True) or {}
         target_image = req_data.get('target_image', '')
+        sandbox_mode = bool(req_data.get('sandbox_mode', False))
 
         # 自动创建演练会话
         session_id = f"session_{uuid.uuid4().hex[:8]}"
@@ -257,7 +264,7 @@ def execute_attack(attack_id):
         async_queue_service.add_task(
             task_type='attack',
             func=_execute_dynamic_attack_async,
-            args=(attack_id, attack, session_id, target_image),
+            args=(attack_id, attack, session_id, target_image, sandbox_mode),
             priority=attack.intensity
         )
 

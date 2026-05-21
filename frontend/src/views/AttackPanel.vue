@@ -136,21 +136,47 @@
 
           </el-form>
 
+          <!-- 沙箱模式开关 -->
+          <div class="sandbox-mode-section" :class="{ 'is-sandbox': sandboxMode }">
+            <div class="sandbox-mode-top">
+              <div class="sandbox-mode-label">
+                <el-icon><Monitor /></el-icon>
+                <span>执行模式</span>
+              </div>
+              <div class="sandbox-mode-cards">
+                <div class="mode-card" :class="{ active: !sandboxMode }" @click="sandboxMode = false">
+                  <el-icon><MagicStick /></el-icon>
+                  <span class="mode-card-name">仿真模式</span>
+                  <span class="mode-card-desc">LLM 生成分析</span>
+                </div>
+                <div class="mode-card sandbox" :class="{ active: sandboxMode }" @click="sandboxMode = true">
+                  <el-icon><Connection /></el-icon>
+                  <span class="mode-card-name">🔥 沙箱模式</span>
+                  <span class="mode-card-desc">真实容器执行</span>
+                </div>
+              </div>
+            </div>
+            <div v-if="sandboxMode" class="sandbox-mode-tip">
+              <el-icon><Warning /></el-icon>
+              将在 Docker 容器内执行真实命令，需目标靶场处于运行状态，支持端口扫描、SQL注入等 10 类攻击
+            </div>
+            <div v-else class="sandbox-mode-tip sim">
+              <el-icon><MagicStick /></el-icon>
+              由 DeepSeek 生成攻击分析与步骤，不产生真实网络请求，适合演练展示
+            </div>
+          </div>
+
           <!-- 操作按钮区域 -->
-          <div class="form-actions-wrapper">
+          <div class="form-actions-wrapper" :class="{ 'sandbox-btn-area': sandboxMode }">
             <p class="form-actions-tip">配置完成后点击下方按钮执行攻击操作</p>
             <div class="form-actions">
-              <el-button type="danger" size="default" :loading="loading" @click="launch"
-                :disabled="!form.type || !form.target">
-                <el-icon>
-                  <Aim />
-                </el-icon>
-                发起攻击
+              <el-button :type="sandboxMode ? 'warning' : 'danger'" size="default" :loading="loading"
+                @click="launch" :disabled="!form.type || !form.target">
+                <el-icon><Aim /></el-icon>
+                {{ sandboxMode ? '🔥 沙箱攻击' : '发起攻击' }}
               </el-button>
               <el-button size="default" @click="resetForm">
-                <el-icon>
-                  <Refresh />
-                </el-icon>
+                <el-icon><Refresh /></el-icon>
                 重置配置
               </el-button>
             </div>
@@ -195,6 +221,38 @@
               <Document />
             </el-icon>
             <p>暂无攻击结果，请发起攻击</p>
+          </div>
+        </el-card>
+
+        <!-- 沙箱真实输出 -->
+        <el-card v-if="sandboxMode" shadow="hover" class="tech-card sandbox-output-card" style="margin-bottom: 16px;">
+          <template #header>
+            <div class="card-header">
+              <span class="card-title sandbox-output-title">
+                <el-icon><Connection /></el-icon>
+                沙箱真实输出
+              </span>
+              <el-tag v-if="sandboxPolling" type="warning" size="small" effect="plain">
+                <el-icon class="is-loading"><Loading /></el-icon> 等待容器执行
+              </el-tag>
+              <el-tag v-else-if="sandboxOutput" :type="sandboxIsReal ? 'success' : 'warning'" size="small">
+                {{ sandboxIsReal ? '真实执行' : '已降级' }}
+              </el-tag>
+              <el-tag v-else type="info" size="small">等待攻击</el-tag>
+            </div>
+          </template>
+          <div v-if="sandboxOutput" class="sandbox-terminal">
+            <pre>{{ sandboxOutput }}</pre>
+          </div>
+          <div v-else-if="sandboxPolling" class="empty-progress">
+            <el-icon :size="28" class="is-loading" style="color: var(--el-color-warning);">
+              <Loading />
+            </el-icon>
+            <p style="color: var(--el-color-warning);">容器执行中，请稍候...</p>
+          </div>
+          <div v-else class="empty-progress">
+            <el-icon :size="28" style="color: var(--text-muted);"><Connection /></el-icon>
+            <p>发起沙箱攻击后，真实命令输出将显示在这里</p>
           </div>
         </el-card>
 
@@ -338,7 +396,8 @@ import { ElMessage } from 'element-plus'
 import {
   Aim, Setting, Edit, Location, Connection,
   MagicStick, Position, List, SuccessFilled,
-  Refresh, CopyDocument, Close, Monitor, Document, DataLine
+  Refresh, CopyDocument, Close, Monitor, Document, DataLine,
+  Loading, Warning
 } from '@element-plus/icons-vue'
 import request from '@/utils/request'
 import { getTargetMeta } from '@/utils/targetMeta'
@@ -388,6 +447,13 @@ const progressStatus = ref({ type: 'warning', text: '执行中' })
 const currentSessionId = ref('')
 let progressTimer = null
 let statsTimer = null
+
+// 沙箱模式
+const sandboxMode = ref(false)
+const sandboxOutput = ref('')
+const sandboxIsReal = ref(false)
+const sandboxPolling = ref(false)
+let sandboxTimer = null
 
 // 统计数据
 const stats = reactive({ total: 0, success: 0, running: 0, failed: 0 })
@@ -500,6 +566,36 @@ function resetForm() {
   form.value = { name: '', type: '', target: 'localhost', port: '80', intensity: 5 }
   result.value = ''
   showProgress.value = false
+  sandboxOutput.value = ''
+  sandboxIsReal.value = false
+  sandboxPolling.value = false
+  if (sandboxTimer) { clearInterval(sandboxTimer); sandboxTimer = null }
+}
+
+async function pollSandboxResult(attackId) {
+  sandboxPolling.value = true
+  sandboxOutput.value = ''
+  if (sandboxTimer) clearInterval(sandboxTimer)
+  let tries = 0
+  sandboxTimer = setInterval(async () => {
+    tries++
+    try {
+      const res = await request.get(`/attack/result/${attackId}`)
+      const out = res.result?.attack?.sandbox_output
+      if (out) {
+        sandboxOutput.value = out
+        sandboxIsReal.value = !!res.result?.attack?.sandbox_real
+        sandboxPolling.value = false
+        clearInterval(sandboxTimer)
+        sandboxTimer = null
+      }
+    } catch (e) { /* ignore */ }
+    if (tries >= 20) {
+      sandboxPolling.value = false
+      clearInterval(sandboxTimer)
+      sandboxTimer = null
+    }
+  }, 2000)
 }
 
 // 攻防进度动画
@@ -584,6 +680,9 @@ async function launch() {
   loading.value = true
   result.value = ''
   showProgress.value = false
+  sandboxOutput.value = ''
+  sandboxIsReal.value = false
+  sandboxPolling.value = false
 
   try {
     const createRes = await request.post('/attack/create', {
@@ -597,7 +696,8 @@ async function launch() {
     if (createRes.status === 'success') {
       const attackId = createRes.attack?.attack_id || Date.now()
       const execRes = await request.post(`/attack/execute/${attackId}`, {
-          target_image: selectedTargetImage.value
+          target_image: selectedTargetImage.value,
+          sandbox_mode: sandboxMode.value
         })
 
       if (execRes.status === 'success') {
@@ -605,6 +705,9 @@ async function launch() {
 
         // 启动攻防进度动画
         startProgressAnimation(sessionId)
+
+        // 沙箱模式：轮询等待真实执行结果
+        if (sandboxMode.value) pollSandboxResult(attackId)
 
         result.value = JSON.stringify({
           status: 'success',
@@ -743,6 +846,7 @@ onMounted(() => {
 onUnmounted(() => {
   if (progressTimer) clearInterval(progressTimer)
   if (statsTimer) clearInterval(statsTimer)
+  if (sandboxTimer) clearInterval(sandboxTimer)
 })
 </script>
 
@@ -912,6 +1016,141 @@ onUnmounted(() => {
   .form-actions {
     flex-wrap: wrap;
   }
+}
+
+/* 沙箱模式开关区域 */
+.sandbox-mode-section {
+  margin: 0 0 14px;
+  padding: 14px 16px;
+  border: 2px solid var(--border-dim);
+  border-radius: 10px;
+  background: rgba(64, 158, 255, 0.04);
+  transition: all 0.3s;
+}
+
+.sandbox-mode-section.is-sandbox {
+  border-color: rgba(230, 162, 60, 0.55);
+  background: rgba(230, 162, 60, 0.06);
+  box-shadow: 0 0 18px rgba(230, 162, 60, 0.18);
+}
+
+.sandbox-mode-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.sandbox-mode-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.sandbox-mode-cards {
+  display: flex;
+  gap: 8px;
+  flex: 1;
+}
+
+.mode-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 10px 8px;
+  border: 1px solid var(--border-dim);
+  border-radius: 8px;
+  cursor: pointer;
+  background: rgba(0, 0, 0, 0.1);
+  transition: all 0.2s;
+  text-align: center;
+  user-select: none;
+}
+
+.mode-card:hover {
+  border-color: var(--el-color-primary);
+  background: rgba(64, 158, 255, 0.08);
+}
+
+.mode-card.active {
+  border-color: var(--el-color-primary);
+  background: rgba(64, 158, 255, 0.12);
+  box-shadow: 0 0 8px rgba(64, 158, 255, 0.2);
+}
+
+.mode-card.sandbox:hover {
+  border-color: var(--el-color-warning);
+  background: rgba(230, 162, 60, 0.08);
+}
+
+.mode-card.sandbox.active {
+  border-color: var(--el-color-warning);
+  background: rgba(230, 162, 60, 0.12);
+  box-shadow: 0 0 12px rgba(230, 162, 60, 0.3);
+}
+
+.mode-card-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.mode-card-desc {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.sandbox-mode-tip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--el-color-warning);
+  padding: 6px 10px;
+  background: rgba(230, 162, 60, 0.08);
+  border-radius: 6px;
+  border: 1px solid rgba(230, 162, 60, 0.2);
+}
+
+.sandbox-mode-tip.sim {
+  color: var(--text-muted);
+  background: rgba(0, 0, 0, 0.08);
+  border-color: var(--border-dim);
+}
+
+/* 沙箱模式下发起攻击按钮区域强调 */
+.sandbox-btn-area {
+  border-color: rgba(230, 162, 60, 0.3) !important;
+  background: rgba(230, 162, 60, 0.06) !important;
+}
+
+/* 沙箱输出卡片 */
+.sandbox-output-card {
+  border: 1px solid rgba(230, 162, 60, 0.35) !important;
+}
+
+.sandbox-output-title {
+  color: var(--el-color-warning) !important;
+}
+
+.sandbox-terminal {
+  background: #0d1117;
+  padding: 14px 16px;
+  border-radius: 8px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: #e6edf3;
+  white-space: pre-wrap;
+  max-height: 320px;
+  overflow-y: auto;
+  border: 1px solid rgba(230, 162, 60, 0.2);
+  line-height: 1.6;
 }
 
 /* 综合靶场漏洞匹配提示（攻击表单内） */
