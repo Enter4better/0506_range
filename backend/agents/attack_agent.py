@@ -343,9 +343,12 @@ class AttackAgent(BaseAgent):
 
         # 根据攻击是否成功选择展示几步
         if success:
-            # 成功：展示更多步骤（3-5步）
+            # 成功：展示更多步骤（3-5步），候选不足3条时用全部
             import random as _r
-            count = _r.randint(3, min(5, len(candidates)))
+            if len(candidates) >= 3:
+                count = _r.randint(3, min(5, len(candidates)))
+            else:
+                count = len(candidates)  # 候选不足3条，全部展示
             selected = candidates[:count]
         else:
             # 失败：展示2-3步
