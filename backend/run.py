@@ -137,6 +137,7 @@ if __name__ == '__main__':
     # 2. 初始化异步队列服务
     try:
         from services.async_queue import async_queue_service
+        async_queue_service.set_app(app)
         async_queue_service.start()
         logger.info("✅ 异步队列服务启动")
     except Exception as e:

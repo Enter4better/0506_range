@@ -283,15 +283,15 @@ class Attack:
         return False
     
     def update_status(self, status, result=None):
-        """更新状态"""
+        """更新状态，可选写入结果"""
         try:
             conn = db_service.get_connection()
             if conn:
                 cursor = conn.cursor()
-                if result:
+                if result is not None:
                     cursor.execute("""
                         UPDATE attacks SET status = ?, result = ?, end_time = ? WHERE attack_id = ?
-                    """, (status, json.dumps(result), datetime.now().isoformat(), self.attack_id))
+                    """, (status, json.dumps(result, ensure_ascii=False), datetime.now().isoformat(), self.attack_id))
                 else:
                     cursor.execute("""
                         UPDATE attacks SET status = ? WHERE attack_id = ?
@@ -325,6 +325,14 @@ class Attack:
     
     def to_dict(self):
         """转换为字典"""
+        raw = self.result
+        if raw and isinstance(raw, str):
+            try:
+                parsed = json.loads(raw)
+            except Exception:
+                parsed = raw
+        else:
+            parsed = raw
         return {
             'attack_id': self.attack_id,
             'user_id': self.user_id,
@@ -334,7 +342,7 @@ class Attack:
             'port': self.port,
             'intensity': self.intensity,
             'status': self.status,
-            'result': json.loads(self.result) if self.result else None,
+            'result': parsed,
             'start_time': self.start_time,
             'end_time': self.end_time,
             'created_at': self.created_at

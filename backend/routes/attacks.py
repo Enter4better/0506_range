@@ -105,6 +105,7 @@ def _execute_dynamic_attack_async(attack_id: str, attack: Attack, session_id: st
                 'phase_name': attack_result.get('phase_name', ''),
                 'intensity': attack.intensity,
                 'ai_analysis': attack_result.get('ai_analysis', ''),
+                'steps': attack_result.get('steps', []),
                 'executed_at': attack_result.get('executed_at', '')
             },
             'defense': {
@@ -118,11 +119,11 @@ def _execute_dynamic_attack_async(attack_id: str, attack: Attack, session_id: st
             'message': f'攻击阶段{attack_phase}完成，防御等级{defense_level}({level_name})'
         }
 
-        # 更新攻击状态
+        # 更新攻击状态（附带完整攻防结果）
         if attack_success:
-            attack.update_status('completed')
+            attack.update_status('completed', result=result)
         else:
-            attack.update_status('failed')
+            attack.update_status('failed', result=result)
 
         with attack_lock:
             attack_results[attack_id] = result
@@ -138,6 +139,10 @@ def _execute_dynamic_attack_async(attack_id: str, attack: Attack, session_id: st
     except Exception as e:
         current_app.logger.error(f"动态攻防执行异常: {e}")
         Log.create('danger', 'attack', f'攻击执行异常: {attack.name} - {str(e)}', user_id=attack.user_id)
+        try:
+            attack.update_status('failed')
+        except Exception:
+            pass
         with attack_lock:
             attack_results[attack_id] = {'success': False, 'blocked': False, 'message': str(e)}
 

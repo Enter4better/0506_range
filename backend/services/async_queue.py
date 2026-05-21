@@ -69,6 +69,11 @@ class AsyncQueueService:
         self.lock = threading.Lock()
         self.running = False
         self.workers = []
+        self.app = None
+    
+    def set_app(self, app):
+        """设置 Flask 应用实例，使后台线程能访问应用上下文"""
+        self.app = app
     
     def start(self):
         """启动队列服务"""
@@ -175,7 +180,14 @@ class AsyncQueueService:
         
         try:
             logger.info(f"开始执行任务: {task.task_id}")
-            result = task.func(*task.args, **task.kwargs)
+            
+            # 在 Flask 应用上下文中执行，支持后台线程中使用 current_app
+            if self.app:
+                with self.app.app_context():
+                    result = task.func(*task.args, **task.kwargs)
+            else:
+                result = task.func(*task.args, **task.kwargs)
+            
             task.result = result
             task.status = 'completed'
             task.completed_at = datetime.now()

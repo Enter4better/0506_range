@@ -5,43 +5,78 @@ node_modules/
 # Build output
 dist/
 **/dist/
+frontend/dist/
 
 # Python
 __pycache__/
 *.pyc
 *.pyo
-.venv/
-venv/
+*.pyd
+.Python
 env/
+venv/
+ENV/
 *.egg-info/
+*.egg
 
-# Environment
+# Environment and secrets
 .env
 .env.local
 .env.*.local
+*.key
+*.pem
+*.p12
 
 # IDE
 .vscode/
 .idea/
 *.swp
 *.swo
+*.swn
 
 # OS
 .DS_Store
 Thumbs.db
+desktop.ini
 
 # Vite cache
 .vite/
+frontend/.vite/
 
 # Logs
 *.log
+backend.log
 npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
-# Database files
+# Database files - 不要提交数据库
 *.db
+*.sqlite
+*.sqlite3
 backend/data/*.db
-# 主数据库跟踪（含默认用户数据）
-!backend/data/ai_security_range.db
+backend/instance/*.db
 
-# Duplicate directories
-backend/backend/
+# 测试文件和临时文件
+backend/nul
+backend/test_*.py
+fewshot_results*.json
+stress_cpu_test_report.md
+
+# Workbuddy 目录 - 包含本地配置和记忆
+.workbuddy/
+
+# 构建产物和报告（如果是个人的）
+*测试*.html
+*报告*.md
+*汇总*.md
+
+# CNCERT 或其他下载的文档
+CNCERT*.pdf
+*.pdf
+
+# 腾讯文档同步文件夹
+txdoc/
+
+# 前端依赖
+frontend/node_modules/
